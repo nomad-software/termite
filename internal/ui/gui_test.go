@@ -330,7 +330,7 @@ func TestToolbar(t *testing.T) {
 				}
 			}
 		}
-		want := "New Window,New Tab,|,Split Horizontally,Split Vertically,|,Broadcast,|,Options,|,Exit"
+		want := "New Window,New Tab,|,Split Horizontally,Split Vertically,Zoom,|,Broadcast,|,Options,|,Exit"
 		// A line runs along its bottom, in the text's colour over the
 		// window's, in every theme.
 		img := w.toolbar.bar.Grab().ToImage()

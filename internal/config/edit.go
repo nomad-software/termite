@@ -50,12 +50,23 @@ func SetValues(path string, values map[string]any) error {
 	if fi, err := os.Stat(path); err == nil {
 		mode = fi.Mode().Perm()
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, out, mode); err != nil {
+	// A temporary file of its own, so two termites saving at once never
+	// write into the same one.
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	if _, err := f.Write(out); err != nil {
+		f.Close()
 		os.Remove(tmp)
 		return err
 	}
-	if err := os.Chmod(tmp, mode); err != nil { // WriteFile's mode is masked by the umask
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Chmod(tmp, mode); err != nil { // CreateTemp makes it 0600
 		os.Remove(tmp)
 		return err
 	}

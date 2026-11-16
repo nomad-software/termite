@@ -1,6 +1,7 @@
 package pty
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -109,8 +110,10 @@ func TestChildEnvironment(t *testing.T) {
 	t.Setenv("APPDIR", "/tmp/.mount_x")
 	t.Setenv("OWD", "/home/me")
 	t.Setenv("TERM", "dumb")
+	t.Setenv("DESKTOP_STARTUP_ID", "termite-1")
+	t.Setenv("XDG_ACTIVATION_TOKEN", "tok")
 	tm := term.New(80, 5, 100)
-	s, err := Start(tm, Options{Command: []string{"sh", "-c", `echo "[$TERM|${APPIMAGE-}|${APPDIR-}|${OWD-}]"`}, Cols: 80, Rows: 5})
+	s, err := Start(tm, Options{Command: []string{"sh", "-c", `echo "[$TERM|${APPIMAGE-}|${APPDIR-}|${OWD-}|${DESKTOP_STARTUP_ID-}${XDG_ACTIVATION_TOKEN-}]"`}, Cols: 80, Rows: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +129,7 @@ func TestChildEnvironment(t *testing.T) {
 	defer tm.Mu.Unlock()
 	b := tm.Buf()
 	top := b.ScreenTopAbs()
-	if got := b.TextRange(term.Pos{Line: top}, term.Pos{Line: top, Col: 80}, false); got != "[xterm-256color|||]" {
+	if got := b.TextRange(term.Pos{Line: top}, term.Pos{Line: top, Col: 80}, false); got != "[xterm-256color||||]" {
 		t.Fatalf("child saw %q", got)
 	}
 }
@@ -161,5 +164,34 @@ func TestWriteNeverBlocks(t *testing.T) {
 	s.mu.Unlock()
 	if queued > maxQueued {
 		t.Errorf("%d bytes queued, more than %d", queued, maxQueued)
+	}
+}
+
+// TestBigWriteArrives checks that one write larger than the queue's limit,
+// a big paste, reaches a child that is reading, rather than being dropped.
+func TestBigWriteArrives(t *testing.T) {
+	const size = 3 * maxQueued
+	tm := term.New(40, 5, 100)
+	s, err := Start(tm, Options{Command: []string{"sh", "-c", "stty raw -echo; head -c " + strconv.Itoa(size) + " | wc -c"}, Cols: 40, Rows: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan struct{})
+	s.OnExit = func() { close(exited) }
+	s.Run()
+	defer s.Close()
+	time.Sleep(200 * time.Millisecond) // let stty run
+	s.Write([]byte(strings.Repeat("x", size)))
+	select {
+	case <-exited:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the child did not get the whole write")
+	}
+	tm.Mu.Lock()
+	defer tm.Mu.Unlock()
+	b := tm.Buf()
+	top := b.ScreenTopAbs()
+	if got := b.TextRange(term.Pos{Line: top}, term.Pos{Line: top + 4, Col: 40}, false); !strings.Contains(got, strconv.Itoa(size)) {
+		t.Fatalf("child counted %q, want %d", got, size)
 	}
 }

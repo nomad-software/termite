@@ -19,10 +19,11 @@ const (
 	Options         = "options"
 	Exit            = "exit"
 	Close           = "close"
+	Zoom            = "zoom"
 )
 
 // Names are every icon there is.
-var Names = []string{NewWindow, NewTab, SplitHorizontal, SplitVertical, Broadcast, Options, Exit, Close}
+var Names = []string{NewWindow, NewTab, SplitHorizontal, SplitVertical, Broadcast, Options, Exit, Close, Zoom}
 
 //go:embed svg/*.svg
 var files embed.FS

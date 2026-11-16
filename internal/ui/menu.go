@@ -81,6 +81,10 @@ func (p *Pane) showContextMenu(x, y int, at *term.Pos) {
 	// panes
 	b.item("Split Horizontally", "split_horizontal", run("split_horizontal"))
 	b.item("Split Vertically", "split_vertical", run("split_vertical"))
+	zoom := b.item("Zoom Pane", "zoom_pane", run("zoom_pane"))
+	zoom.SetCheckable(true)
+	zoom.SetChecked(p.tab.zoomed() == p)
+	zoom.SetEnabled(len(p.tab.Panes()) > 1)
 	menu.AddSeparator()
 
 	// broadcast

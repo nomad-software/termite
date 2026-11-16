@@ -113,7 +113,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
           export XDG_CONFIG_HOME="$(mktemp -d)" XDG_DATA_HOME="$(mktemp -d)"
-          xvfb-run -a -s "-screen 0 1280x800x24" go test ./...
+          xvfb-run -a -s "-screen 0 1280x800x24" go test -timeout 10m ./...
 
       # The AppImage is built in a temporary folder, and only the AppImage
       # itself is put in the root of the repository.

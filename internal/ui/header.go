@@ -84,12 +84,16 @@ func (p *Pane) layoutHeader() {
 	if text == "" {
 		text = " "
 	}
+	// A zoomed pane's header says so ahead of the text, which is elided
+	// in the room left.
+	badge := p.zoomBadge()
 	fm := qtgui.NewQFontMetricsWithFont(p.header.Font())
 	// leave room for the label's horizontal padding
-	if w := p.header.Width() - 20; w > 0 {
+	if w := p.header.Width() - 20 - fm.HorizontalAdvance(badge); w > 0 {
 		text = fm.ElidedText(text, mode, w)
 	}
-	p.header.SetText(text)
+	p.header.SetText(badge + text)
+	p.placeZoomMap()
 	p.header.SetToolTip(tip)
 	if problem != p.headerProblem {
 		p.headerProblem = problem

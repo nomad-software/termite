@@ -36,7 +36,7 @@ var keyNames = map[input.Key]string{
 }
 
 var symbolNames = map[rune]string{
-	'=': "equal", '+': "plus", '-': "minus", ',': "comma", '.': "period", '/': "slash", '\\': "backslash",
+	'=': "equal", '-': "minus", ',': "comma", '.': "period", '/': "slash", '\\': "backslash",
 	';': "semicolon", '\'': "apostrophe", '[': "bracketleft", ']': "bracketright", '`': "grave", ' ': "space",
 }
 

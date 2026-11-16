@@ -303,3 +303,42 @@ func TestWordAtAcrossWrapPad(t *testing.T) {
 		}
 	}
 }
+
+// TestResizeKeepsPendingWrapAfterWide is TestResizeKeepsPendingWrap with a
+// wide character in the last columns: the next character must not split it.
+func TestResizeKeepsPendingWrapAfterWide(t *testing.T) {
+	tm := feed(newT(10, 3), "aaaaaaaa中")
+	tm.Resize(10, 4)
+	feed(tm, "A")
+	wideIntact(t, tm, 0)
+	expectScreen(t, tm, "aaaaaaaa中", "A", "", "")
+}
+
+// TestSearchLowercaseSameTotalLength searches a line where one rune grows
+// and another shrinks when lowercased, leaving the length the same.
+func TestSearchLowercaseSameTotalLength(t *testing.T) {
+	tm := feed(New(20, 2, 10), "ȺȺxyzK") // Ⱥ grows by a byte, the Kelvin sign shrinks by two
+	m := tm.buf.Search("xyz", false)
+	if len(m) != 1 || m[0].Start.Col != 2 || m[0].End.Col != 5 {
+		t.Errorf("%+v, want columns 2 to 5", m)
+	}
+}
+
+// TestIndexEndsPendingWrap checks that ESC D, like LF, ends a pending wrap.
+func TestIndexEndsPendingWrap(t *testing.T) {
+	expectScreen(t, feed(newT(5, 3), "01234\x1bDX"), "01234", "    X", "")
+}
+
+// TestAltScreen1047ClearsWrap checks that leaving ?1047 blanks the
+// alternate screen's soft wraps with its text.
+func TestAltScreen1047ClearsWrap(t *testing.T) {
+	tm := feed(newT(5, 3), "\x1b[?1047h0123456\x1b[?1047l\x1b[?47h")
+	if tm.alt.RowWrapped(0) {
+		t.Error("row 0 of the blank alternate screen is still soft-wrapped")
+	}
+}
+
+// TestResetForgetsLastChar checks that REP after RIS repeats nothing.
+func TestResetForgetsLastChar(t *testing.T) {
+	expectScreen(t, feed(newT(5, 2), "Q\x1bc\x1b[3b"), "", "")
+}

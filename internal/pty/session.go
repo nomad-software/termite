@@ -3,7 +3,6 @@
 package pty
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -94,6 +93,11 @@ func Start(t *term.Terminal, o Options) (*Session, error) {
 		// then point at the AppImage when it was not run from it).
 		case "APPIMAGE", "APPDIR", "ARGV0", "OWD":
 			continue
+		// Start-up notification tokens for termite's own window. Qt unsets
+		// them in C, which Go's copy of the environment never sees; a
+		// program started from a shell would otherwise reuse a stale one.
+		case "DESKTOP_STARTUP_ID", "XDG_ACTIVATION_TOKEN":
+			continue
 		}
 		env = append(env, e)
 	}
@@ -181,16 +185,9 @@ func (s *Session) writer() {
 			s.queue[0] = nil
 			s.queue = s.queue[1:]
 			s.mu.Unlock()
-			for data := b; len(data) > 0; {
-				n, err := s.f.Write(data)
-				if err != nil {
-					if errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.EAGAIN) {
-						continue
-					}
-					break
-				}
-				data = data[n:]
-			}
+			// The PTY is in Go's poller, which waits out EAGAIN and
+			// retries EINTR: an error here means the PTY has gone.
+			_, _ = s.f.Write(b)
 			s.mu.Lock()
 			s.queued -= len(b)
 			s.mu.Unlock()
@@ -210,14 +207,16 @@ func (s *Session) finish() {
 	}
 }
 
-// Write queues input for the child. It never blocks: input beyond
-// maxQueued waiting for a child that isn't reading is dropped.
+// Write queues input for the child. It never blocks: input arriving while
+// more than maxQueued waits for a child that isn't reading is dropped. A
+// single write is taken whole whatever its size when nothing is waiting,
+// so a big paste into a program that is reading arrives in full.
 func (s *Session) Write(p []byte) {
 	if s.closed.Load() || len(p) == 0 {
 		return
 	}
 	s.mu.Lock()
-	if s.queued+len(p) > maxQueued {
+	if s.queued > 0 && s.queued+len(p) > maxQueued {
 		s.mu.Unlock()
 		return
 	}

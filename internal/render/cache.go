@@ -109,8 +109,11 @@ func (c *GlyphCache) get(k glyphKey, text func() string) (Sprite, bool) {
 	default:
 		if k.kind == kindRune && IsProcedural(k.ch) {
 			w := fs.CellW * int(k.cells)
-			a, _ := DrawProcedural(k.ch, w, fs.CellH)
-			r = maskToRaster(a, w, fs.CellH)
+			if a, ok := DrawProcedural(k.ch, w, fs.CellH); ok {
+				r = maskToRaster(a, w, fs.CellH)
+			} else {
+				r = fs.Rasterize(text(), int(k.style), int(k.cells))
+			}
 		} else {
 			r = fs.Rasterize(text(), int(k.style), int(k.cells))
 		}

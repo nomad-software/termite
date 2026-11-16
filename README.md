@@ -45,7 +45,7 @@ vim).
   cursor-aligned Alt+Arrow navigation, input broadcast to a tab or a
   group of panes (their headers take the focused pane's colours), saved layouts that reopen each pane in its directory
   and command, pane headers that show where each shell is, and a toolbar
-  (new window, new tab, splits, broadcast, options, exit) that can be hidden.
+  (new window, new tab, splits, zoom, broadcast, options, exit) that can be hidden.
 - **Safe with what you paste and run.** Bracketed pastes can't be broken
   out of, multi-line pastes into programs that don't bracket them ask
   first, programs may set the clipboard but not read it unless you allow
@@ -103,7 +103,8 @@ keep a symlinked config file a symlink, writing to the file it points at. Proble
 of the wrong type, unknown key names, two actions on one shortcut, syntax
 errors with their line) are shown in red in every pane's header, from
 start-up, until the file is fixed; whatever is valid still applies (a file
-that isn't JSON at all falls back to the defaults). Sizes outside the
+that isn't JSON at all falls back to the defaults, and a shortcut given as
+something other than a string keeps its default). Sizes outside the
 Options dialog's ranges are brought within them.
 
 Most options can also be set in the **Options** dialog (right-click →
@@ -131,7 +132,7 @@ saved when a window closes and used for new windows.
 | `line_height` | `1.0` | multiplier, 0.8 to 2.5 |
 | `theme` | `"ubuntu-ambiance"` | id of the theme to use, a key of `themes` |
 | `window_theme` | `"system"` | `system`, `light`, `dark`: colours of the menus, dialogs and tab bar |
-| `toolbar` | `true` | show the toolbar (New Window, New Tab, Split Horizontally, Split Vertically, Broadcast, Options, Exit) above the tabs; Exit (Ctrl+W) types `exit` into the current pane only |
+| `toolbar` | `true` | show the toolbar (New Window, New Tab, Split Horizontally, Split Vertically, Zoom, Broadcast, Options, Exit) above the tabs; Exit (Ctrl+W) types `exit` into the current pane only |
 | `themes` | the built-in themes | `{"id": {"name": "…", "foreground": "#…", "background": "#…", "cursor": "#…", "cursor_text": …, "selection": …, "selection_text": …, "palette": [16 colours]}}`; when present it replaces the built-in list, so themes can be removed. `cursor_text`, `selection`, `selection_text` and the pane header colours `header_background`, `header_focused_background`, `header_text` and `header_focused_text` are optional |
 | `scrollback` | `10000` | lines, up to 1,000,000 |
 | `cursor_style` | `"block"` | `block`, `beam`, `underline`; programs may choose another shape (DECSCUSR) until they reset it |
@@ -163,11 +164,12 @@ saved when a window closes and used for new windows.
 | broadcast_all (panes in tab) | Ctrl+Shift+B | broadcast_group | unbound |
 | group_toggle (pane in group) | Ctrl+Shift+G | save_layout / load_layout | Ctrl+Shift+S / Ctrl+Shift+L |
 | context_menu | Menu key | options | Ctrl+, |
+| zoom_pane (Zoom Pane) | Ctrl+Shift+Z | | |
 | clear_scrollback, reset_terminal, edit_config | unbound | | |
 
 Right-click opens the context menu (Shift+right-click while an
 application uses the mouse). It covers copy and paste, opening or copying
-the link under the pointer, splitting, broadcast, layouts, find, clear
+the link under the pointer, splitting, zooming, broadcast, layouts, find, clear
 scrollback, reset and Options…. With `window_theme` set to `system` the
 menus and dialogs use the desktop's own style; `light` and `dark` give
 them termite's own. The colour theme applies to the terminal, pane
@@ -185,6 +187,19 @@ programs are ignored. A new pane made by splitting takes the keyboard focus.
 Drag a pane's header onto another pane of the same tab to move it there:
 it splits that pane on the side nearest the pointer (shaded while you
 drag), keeps its shell, and takes the focus. Escape cancels the drag.
+
+Zoom Pane (Ctrl+Shift+Z, the toolbar's Zoom or the context menu) hides
+the other panes of the tab so the pane fills it; pressing it again puts
+them back as they were. The hidden panes keep their size, so programs in
+them are not redrawn. While zoomed, the pane's header reads `⤢ Zoomed: 2
+panes hidden`, the tab's title starts with ⤢, and a minimap in the pane's
+top right corner draws the tab's layout with the zoomed pane filled in
+(and hidden panes that broadcast input reaches tinted). Click a pane on
+the map to zoom it instead, or the zoomed one to show them all. Splitting,
+moving the focus with Alt+Arrows to a hidden pane, or the zoomed pane
+closing also shows them (Alt+Arrows towards the window's edge leaves the
+zoom alone); a hidden pane closing keeps the zoom, and the zoomed pane's
+program sees no resize.
 
 Mouse: drag to select (Alt for block selection), double/triple-click for
 word/line, middle-click pastes the primary selection, Ctrl+click opens URLs
@@ -230,7 +245,9 @@ released.
 
 Shells started from the AppImage see the system as it is: no library paths
 are added, and the variables the AppImage runtime sets for Termite itself
-(`APPIMAGE`, `APPDIR`, `ARGV0`, `OWD`) are not passed on.
+(`APPIMAGE`, `APPDIR`, `ARGV0`, `OWD`) are not passed on, nor are the
+start-up notification tokens meant for Termite's own window
+(`DESKTOP_STARTUP_ID`, `XDG_ACTIVATION_TOKEN`).
 
 `make appimage` runs the same script locally. It works in a temporary
 folder outside the project, removed afterwards, and leaves only the
@@ -285,7 +302,7 @@ Key implementation points:
 make test                                             # all tests, with the race detector
 make vet
 go test ./...                                         # unit + golden-screen tests
-DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, dragging panes, saved layouts, focus, title, toolbar, options, closing, failed starts), under Xvfb
+DISPLAY=:99 go test ./internal/ui                     # GUI tests (splits, dragging panes, zooming, saved layouts, focus, title, toolbar, options, closing, failed starts), under Xvfb
 make fuzz                                             # parser fuzzing for a minute
 go test ./internal/term -bench . -run X               # parser and reflow throughput (make bench)
 make guibench                                         # GUI throughput, frame costs, CPU profile (Xvfb)
@@ -328,8 +345,6 @@ measured it.
   cell, and regional-indicator pairs render as one flag. ZWJ emoji
   sequences and skin-tone modifiers are shown as separate cells, as in
   xterm.
-- **Mouse reporting is SGR-only** (as specified). Legacy X10 encoding is
-  never sent.
 - **Not verified here**: IME composition (no input method available under
   Xvfb), tmux and htop (not installed), native Wayland (tested on X11/xcb
   only), real GPU drivers, vtebench (not installed).

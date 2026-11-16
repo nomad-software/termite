@@ -152,6 +152,7 @@ func (b *Buffer) reflow(cols, cx, cy, lo, hi int, dst []Cell, dstWrap []bool) re
 			if k == cursorOff {
 				st.curLine, st.curX = st.lines, lx
 			}
+			span := w // cells it takes in para, a wide char's right half too
 			if w == 2 && cols < 2 {
 				c.Attr &^= AttrWide
 				w = 1
@@ -164,9 +165,9 @@ func (b *Buffer) reflow(cols, cx, cy, lo, hi int, dst []Cell, dstWrap []bool) re
 			}
 			content = content || isContent(&c)
 			lx += w
-			if k+1 == cursorOff && k == len(para)-1 {
+			if k+span == cursorOff && k+span == len(para) {
 				// cursor right after the last character, cols when that
-				// is in the last column (a pending wrap)
+				// is in the last column (a pending wrap), wide or not
 				st.curLine, st.curX = st.lines, lx
 			}
 		}

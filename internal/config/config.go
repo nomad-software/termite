@@ -11,8 +11,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -61,6 +63,7 @@ var DefaultKeybindings = map[string]string{
 	"exit":             "ctrl+w",
 	"split_horizontal": "ctrl+shift+o", // stacked: one above the other
 	"split_vertical":   "ctrl+shift+e", // side by side
+	"zoom_pane":        "ctrl+shift+z",
 	"focus_up":         "alt+up",
 	"focus_down":       "alt+down",
 	"focus_left":       "alt+left",
@@ -98,10 +101,7 @@ var removedActions = []string{"paste_selection"}
 
 // Default returns the built-in configuration.
 func Default() *Config {
-	kb := map[string]string{}
-	for k, v := range DefaultKeybindings {
-		kb[k] = v
-	}
+	kb := maps.Clone(DefaultKeybindings)
 	return &Config{
 		FontFamily:       "Iosevka Term Curly",
 		FontSize:         15,
@@ -168,9 +168,8 @@ func Load(path string) (*Config, error) {
 		return c, err
 	}
 	// Decoding over the defaults keeps unset fields, and merges the
-	// keybindings map with the default bindings.
+	// keybindings map (shared with c) with the default bindings.
 	out := *c
-	out.Keybindings = c.Keybindings
 	out.Themes = nil // a themes object in the file replaces the built-in one
 	// A value of the wrong type is reported, but the rest of the file still
 	// applies: the decoder carries on past it, leaving that field at its
@@ -182,6 +181,7 @@ func Load(path string) (*Config, error) {
 			return c, fmt.Errorf("%s: %w", path, describeJSONError(data, err))
 		}
 		typeErr = fmt.Errorf("%s: %w", path, err)
+		restoreBadBindings(data, out.Keybindings)
 	}
 	if out.Themes == nil {
 		out.Themes = c.Themes
@@ -189,32 +189,113 @@ func Load(path string) (*Config, error) {
 	if out.Keybindings == nil { // "keybindings": null
 		out.Keybindings = Default().Keybindings
 	}
-	// A strict second pass reports misspelt keys without rejecting the file.
-	var strictErr error
-	strict := json.NewDecoder(bytes.NewReader(data))
-	strict.DisallowUnknownFields()
-	var probe Config
-	if err := strict.Decode(&probe); err != nil {
-		strictErr = fmt.Errorf("%s: %w", path, err)
-	}
 	out.normalize()
 	// Every problem is reported at once, on one line (pane headers show
-	// it). A misspelt key waits until the values are valid, as before; the
-	// strict pass's error is dropped when it is the same wrong type again.
+	// it): wrong types, invalid values and misspelt keys.
 	var problems []string
 	if typeErr != nil {
 		problems = append(problems, typeErr.Error())
 	}
-	var te *json.UnmarshalTypeError
 	if err := out.Validate(); err != nil {
 		problems = append(problems, err.Error())
-	} else if strictErr != nil && !errors.As(strictErr, &te) {
-		problems = append(problems, strictErr.Error())
+	}
+	if keys := unknownKeys(data, reflect.TypeFor[Config](), ""); len(keys) > 0 {
+		problems = append(problems, fmt.Sprintf("%s: unknown key %s", path, strings.Join(keys, ", ")))
 	}
 	if len(problems) == 0 {
 		return &out, nil
 	}
 	return &out, errors.New(strings.Join(problems, "; "))
+}
+
+// restoreBadBindings gives back its default binding to each action whose
+// value in the file is not a string: the decoder leaves it "", which would
+// unbind it.
+func restoreBadBindings(data []byte, kb map[string]string) {
+	var raw struct {
+		Keybindings map[string]json.RawMessage `json:"keybindings"`
+	}
+	if json.Unmarshal(data, &raw) != nil {
+		return
+	}
+	for action, v := range raw.Keybindings {
+		var s string
+		if json.Unmarshal(v, &s) == nil {
+			continue
+		}
+		if def, ok := DefaultKeybindings[action]; ok {
+			kb[action] = def
+		} else {
+			delete(kb, action)
+		}
+	}
+}
+
+// unknownKeys lists, quoted, the keys of the JSON value data that type t
+// has no place for ("themes.mine.foregroud"), found on their own so that a
+// misspelling is reported whatever else is wrong. Keys match fields as
+// encoding/json matches them: by json tag or field name, in any case.
+func unknownKeys(data []byte, t reflect.Type, path string) []string {
+	join := func(k string) string {
+		if path == "" {
+			return k
+		}
+		return path + "." + k
+	}
+	var out []string
+	switch t.Kind() {
+	case reflect.Map:
+		var m map[string]json.RawMessage
+		if json.Unmarshal(data, &m) != nil {
+			return nil
+		}
+		for _, k := range slices.Sorted(maps.Keys(m)) {
+			out = append(out, unknownKeys(m[k], t.Elem(), join(k))...)
+		}
+	case reflect.Slice, reflect.Array:
+		var s []json.RawMessage
+		if json.Unmarshal(data, &s) != nil {
+			return nil
+		}
+		for i, v := range s {
+			out = append(out, unknownKeys(v, t.Elem(), fmt.Sprintf("%s[%d]", path, i))...)
+		}
+	case reflect.Struct:
+		var m map[string]json.RawMessage
+		if json.Unmarshal(data, &m) != nil {
+			return nil
+		}
+		for _, k := range slices.Sorted(maps.Keys(m)) {
+			f, ok := jsonField(t, k)
+			if !ok {
+				out = append(out, strconv.Quote(join(k)))
+				continue
+			}
+			out = append(out, unknownKeys(m[k], f.Type, join(k))...)
+		}
+	}
+	return out
+}
+
+// jsonField finds the field of struct type t that encoding/json decodes the
+// key into.
+func jsonField(t reflect.Type, key string) (reflect.StructField, bool) {
+	for f := range t.Fields() {
+		if !f.IsExported() {
+			continue
+		}
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		if strings.EqualFold(name, key) {
+			return f, true
+		}
+	}
+	return reflect.StructField{}, false
 }
 
 // describeJSONError adds a line number to JSON syntax errors.
@@ -358,9 +439,10 @@ var KeyNames = map[string]bool{
 // ParseChord parses strings like "ctrl+shift+c".
 func ParseChord(s string) (Chord, error) {
 	var c Chord
-	parts := strings.Split(strings.ToLower(strings.TrimSpace(s)), "+")
+	norm := strings.ToLower(strings.TrimSpace(s))
+	parts := strings.Split(norm, "+")
 	// allow "ctrl++" for plus
-	if strings.HasSuffix(s, "++") {
+	if strings.HasSuffix(norm, "++") {
 		parts = append(parts[:len(parts)-2], "plus")
 	}
 	for i, p := range parts {

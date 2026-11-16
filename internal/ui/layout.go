@@ -21,6 +21,17 @@ type Node struct {
 	pane     *Pane
 	split    *qtwidgets.QSplitter
 	children []*Node
+	// zoomSizes are the splitter's sizes from before its tab's zoom hid
+	// some of its children, while it does (zoom.go).
+	zoomSizes []int
+}
+
+// sizes are the splitter's sizes, as they were before any zoom.
+func (n *Node) sizes() []int {
+	if n.zoomSizes != nil {
+		return n.zoomSizes
+	}
+	return n.split.Sizes()
 }
 
 func (n *Node) widget() *qtwidgets.QWidget {
@@ -61,6 +72,8 @@ type Tab struct {
 	focused   *Pane
 	dropZone  *qtwidgets.QLabel // where a dragged pane would go
 	dragging  *Pane             // the pane whose header is being dragged
+	zoom      *zoomState        // the zoomed pane and what it hides, or nil
+	holdGrid  *Pane             // a pane whose terminal is not resized for now (Remove)
 }
 
 // Panes lists the panes in the tab.
@@ -96,6 +109,7 @@ func (t *Tab) insert(p *Pane, orient qtcore.Orientation, np *Pane, before bool) 
 	if node == nil {
 		return
 	}
+	t.unzoom()
 	leaf := &Node{pane: np}
 	par := node.parent
 	if par != nil && par.split.Orientation() == orient {
@@ -171,8 +185,22 @@ func (t *Tab) Remove(p *Pane) bool {
 	// A pane closing while being dragged never sees the release that would
 	// end the drag; any drag ends, as the targets change.
 	t.cancelDrag()
+	// The tree changes: the zoom is undone, and made again when it was
+	// another pane's. Undoing it lays the zoomed pane out smaller at once,
+	// and zooming again gives its size back only later: its terminal keeps
+	// its size meanwhile (holdGrid), so its program sees no resize.
+	keep := t.zoomed()
+	if keep == p {
+		keep = nil
+	}
+	t.holdGrid = keep
+	t.unzoom()
 	empty := t.unlink(p)
 	p.Widget.DeleteLater()
+	if keep != nil && !empty {
+		t.zoomPane(keep)
+	}
+	t.holdGrid = nil
 	return empty
 }
 
@@ -182,6 +210,7 @@ func (t *Tab) Move(p, target *Pane, e dropEdge) {
 	if p == target || t.root.find(p) == nil || t.root.find(target) == nil {
 		return
 	}
+	t.unzoom()
 	t.unlink(p)
 	t.insert(target, e.orient(), p, e.before())
 	p.Widget.Show()
@@ -330,7 +359,7 @@ func (n *Node) save() LayoutNode {
 	if n.pane != nil {
 		return LayoutNode{Cwd: n.pane.cwd(), Command: n.pane.command}
 	}
-	ln := LayoutNode{Split: "columns", Sizes: n.split.Sizes()}
+	ln := LayoutNode{Split: "columns", Sizes: n.sizes()}
 	if n.split.Orientation() == qtcore.Vertical {
 		ln.Split = "rows"
 	}

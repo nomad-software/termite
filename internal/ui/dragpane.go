@@ -110,7 +110,8 @@ func (h *headerLabel) MouseMoveEvent(ev *qtgui.QMouseEvent) {
 		}
 		dx, dy := g.X-h.pressAt.X, g.Y-h.pressAt.Y
 		lim := float64(qtwidgets.QApplicationStartDragDistance())
-		if dx*dx+dy*dy < lim*lim || len(p.tab.Panes()) < 2 {
+		// While zoomed there is nothing to drop on.
+		if dx*dx+dy*dy < lim*lim || len(p.tab.Panes()) < 2 || p.tab.zoom != nil {
 			return
 		}
 		p.tab.dragging, h.dragged = p, true

@@ -37,25 +37,74 @@ func TestPlainRun(t *testing.T) {
 	none := make([]term.Extra, 3)
 	r := &Renderer{}
 	r.curX = 1
-	if !r.plainRun(arrow(0), none, 0, 0, 2, false) {
+	if !r.plainRun(arrow(0), none, 0, 0, 2, false, -1, -1) {
 		t.Error("a plain -> is not drawn as a ligature")
 	}
-	if r.plainRun(arrow(0), none, 0, 0, 2, true) {
+	if r.plainRun(arrow(0), none, 0, 0, 2, true, -1, -1) {
 		t.Error("the cursor on > is lost")
 	}
 	for _, attr := range []term.Attr{term.Attr(0).WithUnderline(term.ULSingle), term.AttrStrike, term.AttrOverline} {
-		if r.plainRun(arrow(attr), none, 0, 0, 2, false) {
+		if r.plainRun(arrow(attr), none, 0, 0, 2, false, -1, -1) {
 			t.Errorf("attribute %b drops its line", attr)
 		}
 	}
 	linked := arrow(0)
 	linked[1].Extra = 1
-	if r.plainRun(linked, []term.Extra{{}, {Link: 1}, {}}, 0, 0, 2, false) {
+	if r.plainRun(linked, []term.Extra{{}, {Link: 1}, {}}, 0, 0, 2, false, -1, -1) {
 		t.Error("a link loses its underline")
 	}
 	r.view.HoverActive = true
 	r.view.Hover = term.Match{Start: term.Pos{Line: 0, Col: 1}, End: term.Pos{Line: 0, Col: 2}}
-	if r.plainRun(arrow(0), none, 0, 0, 2, false) {
+	if r.plainRun(arrow(0), none, 0, 0, 2, false, -1, -1) {
 		t.Error("a hovered link loses its underline")
+	}
+}
+
+// TestPlainRunPreeditAndSelection checks that no ligature is drawn under
+// the IME preedit, or across the edge of the selection, whose cells take
+// other colours than the ligature's first.
+func TestPlainRunPreeditAndSelection(t *testing.T) {
+	line := []term.Cell{{Ch: '-'}, {Ch: '>'}, {Ch: ' '}}
+	none := make([]term.Extra, 3)
+	r := &Renderer{}
+	r.curX = 1
+	if r.plainRun(line, none, 0, 0, 2, false, 1, 3) {
+		t.Error("a ligature is drawn under the preedit")
+	}
+	if !r.plainRun(line, none, 0, 0, 2, false, 2, 3) {
+		t.Error("a preedit after the run stops the ligature")
+	}
+	r.view.Sel = Selection{Active: true, Start: term.Pos{Col: 1}, End: term.Pos{Col: 3}}
+	if r.plainRun(line, none, 0, 0, 2, false, -1, -1) {
+		t.Error("a ligature is drawn across the selection's start")
+	}
+	r.view.Sel.Start.Col = 0
+	if !r.plainRun(line, none, 0, 0, 2, false, -1, -1) {
+		t.Error("a ligature wholly selected is not drawn")
+	}
+}
+
+// TestInSelection checks block selections and a selection made backwards.
+func TestInSelection(t *testing.T) {
+	r := &Renderer{}
+	r.view.Sel = Selection{Active: true, Start: term.Pos{Line: 2, Col: 5}, End: term.Pos{Line: 1, Col: 2}}
+	for _, c := range []struct {
+		abs  int64
+		x    int
+		want bool
+	}{{1, 1, false}, {1, 2, true}, {1, 9, true}, {2, 4, true}, {2, 5, false}, {3, 0, false}} {
+		if got := r.inSelection(c.abs, c.x); got != c.want {
+			t.Errorf("stream: line %d col %d = %v, want %v", c.abs, c.x, got, c.want)
+		}
+	}
+	r.view.Sel.Block = true
+	for _, c := range []struct {
+		abs  int64
+		x    int
+		want bool
+	}{{1, 1, false}, {1, 2, true}, {1, 5, false}, {2, 3, true}, {2, 9, false}} {
+		if got := r.inSelection(c.abs, c.x); got != c.want {
+			t.Errorf("block: line %d col %d = %v, want %v", c.abs, c.x, got, c.want)
+		}
 	}
 }

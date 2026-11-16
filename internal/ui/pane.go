@@ -177,7 +177,10 @@ func (a *App) NewPane(tab *Tab, cwd string, command []string) (*Pane, error) {
 
 	p.GL.OnInit = p.initGL
 	p.GL.OnPaint = p.paint
-	p.GL.OnResize = func(w, h int) { p.updateGridSize() }
+	p.GL.OnResize = func(w, h int) {
+		p.updateGridSize()
+		p.placeZoomMap() // shaped like the tab, whose height may have changed
+	}
 	p.GL.OnEvent = p.event
 	p.setupSearch()
 
@@ -353,7 +356,7 @@ func (p *Pane) fbSize() (int, int) {
 
 // updateGridSize resizes the terminal to fit the widget.
 func (p *Pane) updateGridSize() {
-	if p.R == nil {
+	if p.R == nil || p.tab.holdGrid == p {
 		return
 	}
 	fw, fh := p.fbSize()

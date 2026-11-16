@@ -14,7 +14,7 @@ and architecture.
 - First build compiles qute's shims (minutes). Always run `gofmt -l .`,
   `go vet ./...`, `staticcheck ./...` (in `$GOPATH/bin`) and
   `go run github.com/nomad-software/qute/cmd/qute@<version in go.mod> vet ./...`.
-- GUI tests (`internal/ui/gui_test.go`, `dragpane_test.go`: splits and focus, dragging panes, saved layouts, window title, toolbar,
+- GUI tests (`internal/ui/gui_test.go`, `dragpane_test.go`, `zoom_test.go`: splits and focus, dragging panes, zooming, saved layouts, window title, toolbar,
   options dialog, closing panes and windows, shells that fail to start)
   need an X display, as offscreen gives no GL
   context: `DISPLAY=:99 go test ./internal/ui` under Xvfb (they skip without
@@ -85,6 +85,23 @@ and architecture.
   Same tab only. When a splitter collapses into a splitter of its parent's
   orientation, `Tab.splice` merges it into the parent: same-orientation
   splitters never nest, as saved layouts can't express that.
+- Zooming a pane (`zoom.go`, `zoom_pane`): `Tab.zoomPane` hides the
+  other children of each of the pane's ancestor splitters, keeping their
+  sizes in `Node.zoomSizes` (which `Node.sizes`, saving layouts and the
+  minimap use); `Tab.unzoom` shows them and sets the sizes back, outermost
+  first. Every change to the tree undoes the zoom first (`insert`, `Move`;
+  `Remove` zooms again when another pane was zoomed, holding the zoomed
+  pane's grid size meanwhile with `Tab.holdGrid`, or its program would see
+  two resizes), and so does the focus reaching a hidden pane (`paneFocused`,
+  a safety net). Alt+Arrows from a zoomed pane (`focusZoomed`) finds the
+  neighbour on the minimap's layout and unzooms only when there is one.
+  `zoomPane` moves the focus to the pane before hiding the others, so Qt
+  never passes it along the panes being hidden. Shown by the
+  header badge (`zoomBadge`, `zoomed` property), the tab title's
+  `zoomMark`, the toolbar's checked Zoom and the `zoomMap` minimap, a child
+  of the pane's widget placed by `layoutHeader` and shown by a posted
+  callback once the pane fills the tab (shown at once, it flashes over the
+  pane at its old size). No dragging while zoomed.
 - Tabs (`tabbar.go`): a QTabWidget subclass so it can take a QTabBar
   subclass that asks for the window's whole width and gives every tab the
   same base width; with expanding on (after document mode, which turns it
@@ -145,21 +162,29 @@ and architecture.
   Xvfb has no vsync, so without pacing cheap frames run unthrottled and
   llvmpipe's threads steal CPU from the parser (cat got 30% slower).
 - Shells must not inherit the AppImage runtime's `APPIMAGE`, `APPDIR`,
-  `ARGV0`, `OWD` (stripped in `pty.Start`), and `packaging/AppRun` must not
+  `ARGV0`, `OWD`, nor termite's start-up tokens `DESKTOP_STARTUP_ID` and
+  `XDG_ACTIVATION_TOKEN` (Qt unsets those in C, which Go's copy of the
+  environment never sees; all stripped in `pty.Start`), and `packaging/AppRun` must not
   add anything to the environment: everything in it reaches the shells.
 - `Session.Write` never blocks: the UI thread and the reader call it, and a
   child that stops reading (raw mode) once filled a bounded channel and
   froze every window. Input waits in a queue capped at `maxQueued`; beyond
-  it, it is dropped (`TestWriteNeverBlocks`).
+  it, it is dropped (`TestWriteNeverBlocks`). A write arriving while
+  nothing waits is taken whole whatever its size, so a big paste reaches a
+  program that is reading (`TestBigWriteArrives`).
 - Mouse reports follow the program's choice: SGR with ?1006, else X10
   (`EncodeMouse(…, sgr)`, through `Pane.mouseReport`).
-- Ligatures are drawn only over cells with no cursor and no decorations
-  (`plainRun`): the ligature path skips the per-cell drawing.
+- Ligatures are drawn only over cells with no cursor, no IME preedit, no
+  decorations and one selection state (`plainRun`): the ligature path skips
+  the per-cell drawing and takes the first cell's colours.
 - Config: `Load` keeps what is valid when a value has the wrong type (only
   a syntax error falls back to the defaults); `normalize` clamps sizes to
   the ranges the Options dialog uses (`config.Min…/Max…`); `Validate`
-  reports unknown key names and actions sharing a chord. `Load` reports
-  every problem at once, joined by "; " on one line (the pane headers show
+  reports unknown key names and actions sharing a chord; misspelt keys,
+  nested ones too, are found on their own (`unknownKeys`, matching as
+  encoding/json does), so other problems never hide them. A binding whose
+  value is not a string keeps its default (`restoreBadBindings`), not
+  unbound. `Load` reports every problem at once, joined by "; " on one line (the pane headers show
   it). Start-up problems reach the pane headers through `NewApp`'s
   `loadErr`.
 - Raw syscalls on the PTY (poll, ioctl) go through `Session.rc.Control`,

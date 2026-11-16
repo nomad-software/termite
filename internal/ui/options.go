@@ -223,7 +223,7 @@ func (a *App) showOptions(p *Pane) {
 		}
 		values["themes"], values["theme"] = readThemes()
 		if family != a.cfg.FontFamily || values["font_size"] != a.cfg.FontSize {
-			a.fontScale = 1 // an explicit size replaces any zoom
+			a.fontScale = 1 // an explicit size replaces any Larger/Smaller text scaling
 		}
 		if err := config.SetValues(a.cfgPath, values); err != nil {
 			qtwidgets.QMessageBoxWarning(dlg, desktop.DisplayName, "The settings could not be saved:\n"+err.Error())

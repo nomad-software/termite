@@ -95,7 +95,10 @@ func (w *Window) applyTheme() {
 		"$headerFg", hex(th.HeaderFg),
 		"$focusBg", hex(th.HeaderFocusBg),
 		"$focusFg", hex(th.HeaderFocusFg),
-		"$focusTint", fmt.Sprintf("rgba(%d, %d, %d, 90)", th.HeaderFocusBg>>16&0xff, th.HeaderFocusBg>>8&0xff, th.HeaderFocusBg&0xff),
+		"$focusTint", func() string {
+			c := themeColor(th.HeaderFocusBg, focusTintAlpha)
+			return fmt.Sprintf("rgba(%d, %d, %d, %d)", c.R, c.G, c.B, c.A)
+		}(),
 		"$font", strconv.Quote(family),
 		"$size", strconv.FormatFloat(size, 'f', 1, 64),
 	).Replace(`
@@ -113,6 +116,7 @@ func (w *Window) applyTheme() {
 		QLabel#termiteHeader { background: $headerBg; color: $headerFg; padding: 2px 10px; font-family: $font; font-size: $sizept; }
 		QLabel#termiteHeader[focused="true"] { background: $focusBg; color: $focusFg; }
 		QLabel#termiteHeader[problem="true"] { color: #dc322f; }
+		QLabel#termiteHeader[zoomed="true"] { font-weight: bold; }
 		QLabel#termiteDropZone { background: $focusTint; border: 2px solid $focusBg; }
 	`))
 }
@@ -243,6 +247,9 @@ func (w *Window) updateTitles() {
 			continue
 		}
 		title := p.tabTitle()
+		if t.zoom != nil {
+			title = zoomMark + " " + title
+		}
 		i := w.indexOf(t)
 		if i < 0 {
 			continue // its page is out while it moves
@@ -250,6 +257,9 @@ func (w *Window) updateTitles() {
 		w.tabs.SetTabText(i, title) // the bar elides it, keeping the end
 		w.tabs.SetTabToolTip(i, title)
 	}
+	// The panes or the current one may have changed, which the toolbar's
+	// Zoom shows.
+	w.toolbar.update()
 }
 
 // windowTitle is the title of a window whose current pane is p: the last
@@ -310,6 +320,10 @@ func cursorPoint(p *Pane) (float64, float64) {
 
 // focusDirection moves focus to the neighbouring pane in direction (dx, dy).
 func (w *Window) focusDirection(p *Pane, dx, dy int) {
+	if p.tab.zoom != nil {
+		p.tab.focusZoomed(p, dx, dy)
+		return
+	}
 	panes := p.tab.Panes()
 	var others []*Pane
 	var rects []rect

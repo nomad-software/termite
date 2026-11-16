@@ -28,7 +28,7 @@ type glyphInst struct {
 
 const (
 	flagColorGlyph = 1
-	overlayRects   = 16
+	overlayRects   = 1 // the IME preedit's background
 )
 
 // Selection is a highlighted range in absolute coordinates.
@@ -392,6 +392,12 @@ func (r *Renderer) InitGL() error {
 	if err := initPrograms(); err != nil {
 		return err
 	}
+	if r.glReady {
+		// A new context: the old one's vertex arrays went with it, but the
+		// buffers live on in the share group.
+		bufs := [3]uint32{r.quadVBO, r.rectVBO, r.glyVBO}
+		gl.DeleteBuffers(int32(len(bufs)), &bufs[0])
+	}
 
 	quad := []float32{0, 0, 1, 0, 0, 1, 1, 1}
 	gl.GenBuffers(1, &r.quadVBO)
@@ -616,8 +622,11 @@ func (r *Renderer) buildRow(y int) {
 		if isCursor && curStyle == term.CursorBlock && r.view.Focused {
 			bg = r.cursorColor
 			fg = r.Style.CursorText
-			if r.cursorColor != r.palette[0] && fg == r.cursorColor {
-				fg = r.defBg
+			// Text in the cursor's own colour would vanish: it takes the
+			// screen's background then (reverse video too), unless that is
+			// the cursor's colour as well.
+			if fg == r.cursorColor && defBg != r.cursorColor {
+				fg = defBg
 			}
 		}
 		px := r.Style.PadX + x*cw
@@ -640,7 +649,7 @@ func (r *Renderer) buildRow(y int) {
 			}
 			// optional ligatures over runs of ASCII punctuation
 			if r.Style.Ligatures && c.Attr&term.AttrCluster == 0 && c.Ch < 0x80 && ligatureStart[c.Ch] {
-				if n, s := r.ligatureAt(line, x, style); n > 1 && r.plainRun(line, r.extras[y*cols:(y+1)*cols], abs, x, n, cursorHere) {
+				if n, s := r.ligatureAt(line, x, style); n > 1 && r.plainRun(line, r.extras[y*cols:(y+1)*cols], abs, x, n, cursorHere, preStart, preEnd) {
 					addGlyph(s, x*cw, py, rgba(fg, 255))
 					// draw backgrounds for the following cells, then skip them
 					for k := 1; k < n; k++ {
@@ -708,11 +717,12 @@ func (r *Renderer) buildRow(y int) {
 			if c.Attr&term.AttrOverline != 0 {
 				dec(decOverline, fg)
 			}
-		}
-		if r.view.HoverActive && inMatch(r.view.Hover, abs, x) && c.Attr.Underline() == 0 {
-			dec(decUnderline, fg)
-		} else if ext.Link != 0 && c.Attr.Underline() == 0 {
-			dec(decLinkUnderline, mix(fg, bg, 0.4))
+			// Concealed text shows no link either.
+			if r.view.HoverActive && inMatch(r.view.Hover, abs, x) && c.Attr.Underline() == 0 {
+				dec(decUnderline, fg)
+			} else if ext.Link != 0 && c.Attr.Underline() == 0 {
+				dec(decLinkUnderline, mix(fg, bg, 0.4))
+			}
 		}
 		if isCursor {
 			switch {
@@ -729,17 +739,21 @@ func (r *Renderer) buildRow(y int) {
 }
 
 // plainRun reports whether the n cells from x can be drawn as one ligature:
-// a ligature skips the per-cell work, so none of them may have the cursor or
-// a line drawn over or under it.
-func (r *Renderer) plainRun(line []term.Cell, extras []term.Extra, abs int64, x, n int, cursorHere bool) bool {
-	if cursorHere && r.curX >= x && r.curX < x+n {
+// a ligature skips the per-cell work and takes the first cell's colour, so
+// none of them may have the cursor, the IME preedit ([preStart, preEnd))
+// or a line drawn over or under it, and the selection (or current match)
+// covers all of them or none.
+func (r *Renderer) plainRun(line []term.Cell, extras []term.Extra, abs int64, x, n int, cursorHere bool, preStart, preEnd int) bool {
+	if cursorHere && r.curX >= x && r.curX < x+n || preStart < x+n && x < preEnd {
 		return false
 	}
+	selected := r.inSelection(abs, x) || r.inCurrentMatch(abs, x)
 	for k := x; k < x+n; k++ {
 		c := line[k]
 		if c.Attr.Underline() != 0 || c.Attr&(term.AttrStrike|term.AttrOverline) != 0 ||
 			c.Extra != 0 && extras[k].Link != 0 ||
-			r.view.HoverActive && inMatch(r.view.Hover, abs, k) {
+			r.view.HoverActive && inMatch(r.view.Hover, abs, k) ||
+			k > x && (r.inSelection(abs, k) || r.inCurrentMatch(abs, k)) != selected {
 			return false
 		}
 	}
@@ -793,8 +807,12 @@ func (r *Renderer) buildOverlay() {
 	if r.view.Preedit != "" && r.curY >= 0 {
 		py := r.Style.PadY + r.curY*ch
 		x := r.curX
-		w := term.StringWidth(r.view.Preedit)
-		add(r.Style.PadX+x*cw, py, w*cw, ch, rgba(r.defBg, 255))
+		w := min(term.StringWidth(r.view.Preedit), r.cols-x) // its glyphs stop at the edge too
+		bg := r.defBg
+		if r.reverse {
+			bg = r.defFg
+		}
+		add(r.Style.PadX+x*cw, py, w*cw, ch, rgba(bg, 255))
 		for _, g := range graphemes(r.view.Preedit) {
 			gw := max(1, term.StringWidth(g))
 			if x+gw > r.cols {

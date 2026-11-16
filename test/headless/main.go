@@ -140,6 +140,10 @@ func parseScript(s string) ([]token, error) {
 			if len(arg) != 1 {
 				return nil, fmt.Errorf("{ctrl %s}: want one key", arg)
 			}
+			if arg == "?" {
+				out = append(out, token{text: "\x7f"}) // Ctrl+? is DEL
+				break
+			}
 			out = append(out, token{text: string(rune(strings.ToUpper(arg)[0]) & 0x1f)})
 		case "hex":
 			b, err := hex.DecodeString(arg)

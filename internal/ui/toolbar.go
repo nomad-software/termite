@@ -16,6 +16,7 @@ var toolbarItems = []struct{ label, action, icon string }{
 	{},
 	{"Split Horizontally", "split_horizontal", icons.SplitHorizontal},
 	{"Split Vertically", "split_vertical", icons.SplitVertical},
+	{"Zoom", "zoom_pane", icons.Zoom},
 	{},
 	{"Broadcast", "broadcast_all", icons.Broadcast},
 	{},
@@ -99,6 +100,8 @@ func newToolbar(w *Window) *toolbar {
 		button.SetMinimumWidth(toolButtonWidth)
 		button.InstallEventFilter(noTips)
 	}
+	// Zoom is checked while the current tab's pane is zoomed.
+	tb.actions["zoom_pane"].SetCheckable(true)
 	tb.update()
 	return tb
 }
@@ -175,4 +178,7 @@ func (tb *toolbar) update() {
 	p := tb.win.currentPane()
 	tb.inGroup.SetEnabled(p != nil)
 	tb.inGroup.SetChecked(p != nil && p.InGroup)
+	zoom := tb.actions["zoom_pane"]
+	zoom.SetEnabled(p != nil && len(p.tab.Panes()) > 1)
+	zoom.SetChecked(p != nil && p.tab.zoom != nil)
 }

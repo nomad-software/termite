@@ -226,6 +226,12 @@ func (a *App) windowClosed(w *Window) {
 func (a *App) paneFocused(p *Pane) {
 	moved := a.focused == nil || a.focused.tab != p.tab
 	a.focused = p
+	// A safety net: Qt gives no hidden widget the focus, and whatever
+	// focuses a pane undoes the zoom first, but should the focus reach a
+	// pane the zoom hides, it is shown.
+	if zp := p.tab.zoomed(); zp != nil && zp != p {
+		p.tab.unzoom()
+	}
 	if moved && a.broadcast == BroadcastAll {
 		a.refreshBroadcast() // typing reaches another tab now
 	}
@@ -315,6 +321,9 @@ func (a *App) refreshBroadcast() {
 	}
 	for _, w := range a.windows {
 		w.toolbar.update()
+		for _, t := range w.list {
+			t.updateZoomMap() // it tints the hidden panes typing reaches
+		}
 	}
 }
 
@@ -343,6 +352,9 @@ func (a *App) runAction(p *Pane, action string) {
 		a.split(p, qtcore.Vertical)
 	case "split_vertical":
 		a.split(p, qtcore.Horizontal)
+	case "zoom_pane":
+		p.tab.toggleZoom(p)
+		w.toolbar.update() // its button is checked whether or not anything changed
 	case "focus_up":
 		w.focusDirection(p, 0, -1)
 	case "focus_down":

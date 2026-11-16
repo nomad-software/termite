@@ -426,3 +426,46 @@ func TestDirIgnoresRelativeXDG(t *testing.T) {
 		t.Errorf("Dir() = %q", got)
 	}
 }
+
+// A misspelt key is reported alongside the file's other problems, nested
+// ones too, and a binding of the wrong type keeps its default.
+func TestLoadUnknownKeysAndBadBindings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	data := `{"font_size": "big", "cursor_style": "bar", "fontsize": 3, "FONT_FAMILY": "Mono",
+		"themes": {"mine": {"name": "Mine", "foregroud": "#ffffff", "background": "#000000", "cursor": "#ffffff"}},
+		"keybindings": {"copy": 5, "paste": "ctrl+alt+v", "bogus_action": 1}}`
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"font_size", "cursor_style", `"fontsize"`, `"themes.mine.foregroud"`} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q does not mention %s", msg, want)
+		}
+	}
+	if strings.Contains(msg, "FONT_FAMILY") {
+		t.Errorf("error %q reports a key encoding/json takes (case is ignored)", msg)
+	}
+	if c.FontFamily != "Mono" {
+		t.Errorf("font_family %q", c.FontFamily)
+	}
+	if got := c.Keybindings["copy"]; got != DefaultKeybindings["copy"] {
+		t.Errorf("copy bound to %q, want its default %q", got, DefaultKeybindings["copy"])
+	}
+	if got := c.Keybindings["paste"]; got != "ctrl+alt+v" {
+		t.Errorf("paste bound to %q", got)
+	}
+}
+
+func TestParseChordTrailingSpace(t *testing.T) {
+	for _, s := range []string{"ctrl++", "ctrl++ ", " ctrl++ "} {
+		c, err := ParseChord(s)
+		if err != nil || !c.Ctrl || c.Key != "equal" {
+			t.Errorf("ParseChord(%q) = %+v, %v", s, c, err)
+		}
+	}
+}

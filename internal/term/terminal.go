@@ -435,10 +435,10 @@ func (t *Terminal) printRune(r rune) {
 	}
 }
 
-// clearWideAt removes the other half of a wide character overlapping x.
 // blankCell blanks a cell, keeping its colours.
 func blankCell(c *Cell) { *c = Cell{Fg: c.Fg, Bg: c.Bg} }
 
+// clearWideAt removes the other half of a wide character overlapping x.
 func (t *Terminal) clearWideAt(line []Cell, x int) {
 	c := line[x]
 	if c.Attr&AttrWideCont != 0 && x > 0 {
@@ -502,9 +502,7 @@ func (t *Terminal) execute(b byte) {
 	case 0x07:
 		t.events |= EvBell
 	case 0x08:
-		if t.cur.wrapPending {
-			t.cur.wrapPending = false
-		}
+		t.cur.wrapPending = false
 		if t.cur.X > 0 {
 			t.cur.X--
 		}
@@ -706,7 +704,7 @@ func (t *Terminal) insertBlanks(n int) {
 	x := t.cur.X
 	n = min(n, t.cols-x)
 	// A wide character at x moves right whole; one split by x goes.
-	if line[x].Attr&AttrWideCont != 0 {
+	if line[x].Attr&AttrWideCont != 0 && x > 0 {
 		blankCell(&line[x-1])
 		blankCell(&line[x])
 	}
@@ -728,7 +726,7 @@ func (t *Terminal) deleteChars(n int) {
 	n = min(n, t.cols-x)
 	// A wide character split by either end of the deleted cells goes: its
 	// left half stays at x-1, or its right half moves to x.
-	if line[x].Attr&AttrWideCont != 0 {
+	if line[x].Attr&AttrWideCont != 0 && x > 0 {
 		blankCell(&line[x-1])
 	}
 	if x+n < t.cols && line[x+n].Attr&AttrWideCont != 0 {
@@ -820,6 +818,7 @@ func (t *Terminal) escDispatch(final byte) {
 		t.restoreCursor()
 	case 'D':
 		t.index()
+		t.cur.wrapPending = false // as LF
 	case 'E':
 		t.index()
 		t.cur.X = 0
@@ -842,6 +841,7 @@ func (t *Terminal) escDispatch(final byte) {
 func (t *Terminal) fullReset() {
 	t.switchScreen(false, false)
 	t.reset()
+	t.lastChar = 0 // REP after RIS repeats nothing
 	t.primary = NewBuffer(t.cols, t.rows, t.scrollback)
 	t.primary.Evicted = t.buf.Evicted + int64(t.buf.Count())
 	t.alt = NewBuffer(t.cols, t.rows, 0)
@@ -1201,6 +1201,7 @@ func (t *Terminal) setDECMode(mode int, set bool) {
 		if !set && t.altActive {
 			for y := 0; y < t.rows; y++ {
 				fillCells(t.alt.Line(y), Cell{})
+				t.alt.SetWrapped(y, false)
 			}
 		}
 		t.switchScreen(set, false)
@@ -1391,7 +1392,7 @@ func (t *Terminal) sgrReport() string {
 		case c.IsRGB():
 			r, g, bl := c.RGB()
 			if sep == ":" {
-				add(ext + ":2:" + ":" + strconv.Itoa(int(r)) + ":" + strconv.Itoa(int(g)) + ":" + strconv.Itoa(int(bl)))
+				add(ext + ":2::" + strconv.Itoa(int(r)) + ":" + strconv.Itoa(int(g)) + ":" + strconv.Itoa(int(bl)))
 			} else {
 				add(ext + ";2;" + strconv.Itoa(int(r)) + ";" + strconv.Itoa(int(g)) + ";" + strconv.Itoa(int(bl)))
 			}
