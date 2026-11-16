@@ -325,6 +325,9 @@ type LayoutNode struct {
 	Children []LayoutNode `json:"children,omitempty"`
 	Cwd      string       `json:"cwd,omitempty"`
 	Command  []string     `json:"command,omitempty"`
+	// FontStep is the pane's own text size, in steps of Larger (or, below
+	// 0, Smaller) text; 0 (left out) is its usual size.
+	FontStep int `json:"font_step,omitempty"`
 }
 
 // LayoutFile is a saved window layout.
@@ -357,7 +360,7 @@ func ListLayouts() []string {
 
 func (n *Node) save() LayoutNode {
 	if n.pane != nil {
-		return LayoutNode{Cwd: n.pane.cwd(), Command: n.pane.command}
+		return LayoutNode{Cwd: n.pane.cwd(), Command: n.pane.command, FontStep: n.pane.fontStep}
 	}
 	ln := LayoutNode{Split: "columns", Sizes: n.sizes()}
 	if n.split.Orientation() == qtcore.Vertical {
@@ -423,6 +426,7 @@ func (a *App) buildLayout(t *Tab, p *Pane, ln LayoutNode) {
 			panes = append(panes, nil)
 			continue
 		}
+		np.setFontStep(leaf.FontStep)
 		t.Split(cur, orient, np)
 		panes = append(panes, np)
 		cur = np

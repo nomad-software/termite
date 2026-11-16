@@ -862,7 +862,13 @@ func (t *Terminal) softReset() {
 	t.cur.charsets = [4]byte{}
 	t.cur.gl = 0
 	t.ulColor, t.link = 0, 0
-	t.savedMain, t.savedAlt = cursor{}, cursor{}
+	// Only the active screen's saved cursor: the main screen's is still
+	// wanted when a program resets on the alternate screen and leaves.
+	if t.altActive {
+		t.savedAlt = cursor{}
+	} else {
+		t.savedMain = cursor{}
+	}
 	t.cur.wrapPending = false
 }
 

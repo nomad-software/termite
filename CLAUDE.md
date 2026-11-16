@@ -102,6 +102,16 @@ and architecture.
   of the pane's widget placed by `layoutHeader` and shown by a posted
   callback once the pane fills the tab (shown at once, it flashes over the
   pane at its old size). No dragging while zoomed.
+- Text size is per pane (`Pane.fontStep`, Larger/Smaller text, through
+  `App.scaleText` to every pane `inputTargets` gives): whole steps of
+  `fontStepFactor` on the config's `font_size` (a float multiplied each
+  time drifts, and a pane back at "1" would hold its own cache), never
+  saved to the config, kept in layouts (`font_step`). Glyph caches are
+  keyed by font, size, line height, step and screen scale (`cacheKey`, `App.cacheFor`) and shared by panes that match;
+  `App.pruneCaches` frees the ones no open pane uses (after a scale change,
+  a pane or window closing, a font change), making some pane's context
+  current to delete the atlas texture, so never call it from inside a
+  paint (`paint` posts it).
 - Tabs (`tabbar.go`): a QTabWidget subclass so it can take a QTabBar
   subclass that asks for the window's whole width and gives every tab the
   same base width; with expanding on (after document mode, which turns it

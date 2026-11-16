@@ -190,6 +190,7 @@ func (w *Window) addLayoutTab(ln LayoutNode) {
 	if t == nil {
 		return
 	}
+	t.root.pane.setFontStep(leaf.FontStep)
 	w.app.buildLayout(t, t.root.pane, ln)
 }
 

@@ -31,8 +31,7 @@ type App struct {
 	bindings   config.Bindings
 	theme      config.Theme
 	windows    []*Window
-	caches     map[float64]*render.GlyphCache
-	fontScale  float64
+	caches     map[cacheKey]*render.GlyphCache
 	focused    *Pane
 	broadcast  int
 	configErr  string // the config file's latest problem, shown in pane headers
@@ -42,7 +41,7 @@ type App struct {
 // NewApp creates the application controller. loadErr is the problem
 // config.Load found with the file, if any, which the pane headers show.
 func NewApp(cfg *config.Config, cfgPath string, loadErr error, cmd []string) *App {
-	a := &App{cfg: cfg, cfgPath: cfgPath, caches: map[float64]*render.GlyphCache{}, fontScale: 1, defaultCmd: cmd}
+	a := &App{cfg: cfg, cfgPath: cfgPath, caches: map[cacheKey]*render.GlyphCache{}, defaultCmd: cmd}
 	if loadErr != nil {
 		a.configErr = loadErr.Error()
 	}
@@ -91,7 +90,7 @@ func (a *App) reload(c *config.Config, err error) {
 	}
 	fontChanged := old.FontFamily != c.FontFamily || old.FontSize != c.FontSize || old.LineHeight != c.LineHeight
 	if fontChanged {
-		a.rebuildFonts()
+		a.refreshFonts()
 	}
 	// Restyle first: the header font comes from the stylesheet, and
 	// layoutHeader elides with it.
@@ -144,27 +143,82 @@ func (a *App) styleFor(p *Pane) render.Style {
 	}
 }
 
-// cacheFor returns the glyph cache for a device pixel ratio. A GL context
-// must be current.
-func (a *App) cacheFor(dpr float64) *render.GlyphCache {
-	if c, ok := a.caches[dpr]; ok {
+// cacheKey picks a glyph cache: panes drawing the same font at the same
+// size on screens of the same scale share one.
+type cacheKey struct {
+	family           string
+	size, lineHeight float64 // the config's
+	step             int     // Pane.fontStep
+	dpr              float64
+}
+
+// cacheFor returns the glyph cache for a pane on a screen of scale dpr whose
+// text is step steps larger or smaller (Pane.fontStep). A GL context must
+// be current.
+func (a *App) cacheFor(dpr float64, step int) *render.GlyphCache {
+	k := cacheKey{a.cfg.FontFamily, a.cfg.FontSize, a.cfg.LineHeight, step, dpr}
+	if c, ok := a.caches[k]; ok {
 		return c
 	}
-	fs := render.NewFontSet(a.cfg.FontFamily, a.cfg.FontSize*a.fontScale, a.cfg.LineHeight, dpr)
-	c := render.NewGlyphCache(fs)
-	a.caches[dpr] = c
+	c := render.NewGlyphCache(render.NewFontSet(k.family, k.size*fontScale(step), k.lineHeight, k.dpr))
+	a.caches[k] = c
 	return c
 }
 
-func (a *App) rebuildFonts() {
-	for dpr, c := range a.caches {
-		c.SetFonts(render.NewFontSet(a.cfg.FontFamily, a.cfg.FontSize*a.fontScale, a.cfg.LineHeight, dpr))
-	}
+// pruneCaches frees the glyph caches no open pane uses: each holds an atlas
+// texture, and every text size a pane has passed through would keep one.
+func (a *App) pruneCaches() {
+	used := map[*render.GlyphCache]bool{}
+	var current *Pane // a pane whose GL context can be made current
 	for _, p := range a.allPanes() {
-		p.cols = 0
-		p.updateGridSize()
-		p.invalidate()
+		if p.exited || p.R == nil {
+			continue
+		}
+		used[p.cache] = true
+		current = p
 	}
+	if current == nil {
+		return // nothing left to draw with them; they go with the process
+	}
+	made := false
+	for k, c := range a.caches {
+		if used[c] {
+			continue
+		}
+		if !made {
+			current.GL.MakeCurrent() // the textures live in the share group
+			defer current.GL.DoneCurrent()
+			made = true
+		}
+		c.Release()
+		delete(a.caches, k)
+	}
+}
+
+// refreshFonts gives every pane the font the config now sets, at its own
+// scale, after the font changed.
+func (a *App) refreshFonts() {
+	for _, p := range a.allPanes() {
+		p.useFont()
+	}
+	a.pruneCaches()
+}
+
+// scaleText makes the text of p, and of the panes typing in it reaches
+// (broadcast), larger or smaller, or its usual size. It is the panes' own:
+// the config's font size is left alone.
+func (a *App) scaleText(p *Pane, action string) {
+	for _, q := range a.inputTargets(p) {
+		n := 0
+		switch action {
+		case "font_bigger":
+			n = q.fontStep + 1
+		case "font_smaller":
+			n = q.fontStep - 1
+		}
+		q.setFontStep(n)
+	}
+	a.pruneCaches()
 }
 
 // ---------------------------------------------------------------- windows
@@ -220,7 +274,9 @@ func (a *App) windowClosed(w *Window) {
 	}
 	if len(a.windows) == 0 {
 		qtcore.QCoreApplicationQuit()
+		return
 	}
+	a.pruneCaches() // the sizes only the window's panes had
 }
 
 func (a *App) paneFocused(p *Pane) {
@@ -254,6 +310,7 @@ func (a *App) closePane(p *Pane) {
 	}
 	t := p.tab
 	empty := t.Remove(p)
+	a.pruneCaches() // the pane's text size may have been its own
 	if empty {
 		t.win.removeTab(t)
 		return
@@ -381,15 +438,8 @@ func (a *App) runAction(p *Pane, action string) {
 		p.scrollToTop()
 	case "scroll_bottom":
 		p.scrollToBottom()
-	case "font_bigger":
-		a.fontScale = math.Min(a.fontScale*1.1, 5)
-		a.rebuildFonts()
-	case "font_smaller":
-		a.fontScale = math.Max(a.fontScale/1.1, 0.3)
-		a.rebuildFonts()
-	case "font_reset":
-		a.fontScale = 1
-		a.rebuildFonts()
+	case "font_bigger", "font_smaller", "font_reset":
+		a.scaleText(p, action)
 	case "broadcast_all":
 		a.toggleBroadcast(BroadcastAll)
 	case "broadcast_group":

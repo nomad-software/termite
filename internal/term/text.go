@@ -229,10 +229,10 @@ func (b *Buffer) Search(query string, caseSensitive bool) []Match {
 		text, pos, next = b.paragraph(i, text, pos)
 		hay, hayPos := text, pos
 		if !caseSensitive {
-			var ascii bool
-			lower, ascii = appendLower(lower[:0], text)
-			hay = lower
-			if !ascii {
+			if isASCII(text) {
+				lower = appendLowerASCII(lower[:0], text)
+				hay = lower
+			} else {
 				// Lowercasing may change a rune's length (the Kelvin sign
 				// shrinks, Ⱥ grows), even where the total stays the same:
 				// map each byte of the lowered text to its cell again.
@@ -274,19 +274,25 @@ func appendLowerMapped(dst []byte, dstPos []Pos, s []byte, pos []Pos) ([]byte, [
 	return dst, dstPos
 }
 
-// appendLower appends s lower-cased to dst, with an ASCII fast path, and
-// reports whether s was all ASCII (so every byte kept its place).
-func appendLower(dst, s []byte) ([]byte, bool) {
-	for i, c := range s {
+// isASCII reports whether s is all ASCII.
+func isASCII(s []byte) bool {
+	for _, c := range s {
 		if c >= utf8.RuneSelf {
-			return append(dst, bytes.ToLower(s[i:])...), false
+			return false
 		}
+	}
+	return true
+}
+
+// appendLowerASCII appends s, all ASCII, lower-cased to dst.
+func appendLowerASCII(dst, s []byte) []byte {
+	for _, c := range s {
 		if 'A' <= c && c <= 'Z' {
 			c += 'a' - 'A'
 		}
 		dst = append(dst, c)
 	}
-	return dst, true
+	return dst
 }
 
 var urlRe = regexp.MustCompile(`(?:https?|ftp|file)://[^\s<>"'\x60]+|mailto:[^\s<>"']+|www\.[^\s<>"']+`)

@@ -46,6 +46,21 @@ vim).
   group of panes (their headers take the focused pane's colours), saved layouts that reopen each pane in its directory
   and command, pane headers that show where each shell is, and a toolbar
   (new window, new tab, splits, zoom, broadcast, options, exit) that can be hidden.
+- **Every pane at its own text size.** Ctrl+= and Ctrl+- make the text
+  of the pane you are typing in larger or smaller, not the whole window's:
+  keep a log tailing in small text beside an editor at a comfortable size,
+  or blow one pane up to show someone, while the rest stay as they are.
+  With input broadcast, every pane it reaches changes together. Sizes are
+  on screen only (the config's font size stays the base, and changing it
+  keeps each pane's step), saved layouts remember them, and panes at the
+  same size share one glyph atlas, freed when no pane uses that size.
+- **Zoom a pane without losing track of the rest.** Ctrl+Shift+Z lets a
+  pane fill its tab, and pressing it again puts the others back exactly
+  as they were. The hidden panes keep their size, so the programs in
+  them are never resized. It's clear that more is there: the pane's
+  header counts the hidden panes, the tab's title is marked ⤢, and a
+  minimap in the corner draws the tab's layout. Click a pane on the map
+  to jump to it.
 - **Safe with what you paste and run.** Bracketed pastes can't be broken
   out of, multi-line pastes into programs that don't bracket them ask
   first, programs may set the clipboard but not read it unless you allow
@@ -160,7 +175,7 @@ saved when a window closes and used for new windows.
 | split_horizontal (Split Horizontally: stacked) | Ctrl+Shift+O | focus_up/down/left/right | Alt+Arrows |
 | next_tab / prev_tab | Ctrl+PgDn / Ctrl+PgUp | move_tab_left/right | Ctrl+Shift+PgUp/PgDn |
 | scroll_page_up/down | Shift+PgUp/PgDn | scroll_top/bottom | Shift+Home/End |
-| font_bigger/smaller/reset | Ctrl+= / Ctrl+- / Ctrl+0 | reload_config | Ctrl+Shift+R |
+| font_bigger/smaller/reset (this pane's text) | Ctrl+= / Ctrl+- / Ctrl+0 | reload_config | Ctrl+Shift+R |
 | broadcast_all (panes in tab) | Ctrl+Shift+B | broadcast_group | unbound |
 | group_toggle (pane in group) | Ctrl+Shift+G | save_layout / load_layout | Ctrl+Shift+S / Ctrl+Shift+L |
 | context_menu | Menu key | options | Ctrl+, |
@@ -201,6 +216,15 @@ closing also shows them (Alt+Arrows towards the window's edge leaves the
 zoom alone); a hidden pane closing keeps the zoom, and the zoomed pane's
 program sees no resize.
 
+Larger text (Ctrl+=), Smaller text (Ctrl+-) and Reset text size (Ctrl+0)
+change the pane you are typing in alone, in steps of 10% (each the last
+times 1.1) from about 32% to 460% of the configured font size, or every
+pane input is broadcast to. A pane
+made by splitting, a new tab and a new window start at the configured
+size. The steps are never written to the config: changing `font_size`
+(in the file or Options) moves every pane, each keeping its own step.
+Saved layouts record each pane's step (`font_step`).
+
 Mouse: drag to select (Alt for block selection), double/triple-click for
 word/line, middle-click pastes the primary selection, Ctrl+click opens URLs
 and OSC 8 links (Ctrl+hover underlines them). Shift bypasses application
@@ -209,7 +233,7 @@ time, the newest first: Enter goes to the next older match, Shift+Enter to
 the next newer one, and Esc closes the search bar.
 
 Layouts are saved as JSON under `~/.config/termite/layouts/`, recording the
-split tree, sizes, each pane's working directory and command for every tab.
+split tree, sizes, each pane's working directory, command and text size for every tab.
 Loading a layout replaces the window's tabs with its own. Layouts can be
 removed from the Layouts menu.
 
@@ -268,7 +292,7 @@ internal/input       key (xterm + kitty), mouse (SGR and X10) and paste encoding
 internal/render      glyph atlas, procedural box drawing, OpenGL renderer
 internal/qtgl        the terminal's QOpenGLWidget, a Go subclass of qute's
 internal/ui          windows, toolbar, tabs, splits, panes, layouts, actions
-internal/icons       toolbar icons as embedded SVG (no Qt)
+internal/icons       toolbar and tab icons as embedded SVG (no Qt)
 internal/config      JSON config, in-place setting writes, themes, key chords
 internal/desktop     desktop entry and icon install
 internal/appicon     embedded program icon
@@ -290,11 +314,11 @@ Key implementation points:
 - **Parser**: a VT500-style state machine with fast paths for the bulk of real output. Runs of printable ASCII are written in one go, CSI parameters are scanned in a tight loop, and OSC/DCS payloads are copied whole. Cells are stored from the pen in one 16-byte write. Steady-state allocations are zero.
 - **Reflow** measures the result in a first pass, then writes only the lines that are kept straight into the new ring, so a resize allocates nothing but the new buffer.
 - **Rendering**: two instanced draw calls, backgrounds then glyphs. Each row builds into its own slot, rebuilt only when the row is damaged; every frame the instances actually in use are packed together, so the GPU never processes empty slots (a typical frame draws 300–4,000 instances rather than 34,000).
-- **Glyphs** are rasterized once with QPainter, which gives Qt's font fallback, colour emoji and shaping for ligatures. They live in a shared RGBA atlas, since all pane contexts share GL resources.
+- **Glyphs** are rasterized once with QPainter, which gives Qt's font fallback, colour emoji and shaping for ligatures. They live in an RGBA atlas per font size and screen scale, shared by every pane at that size, since all pane contexts share GL resources; a size no pane uses any more is freed.
 - **Box drawing**, block elements, braille, Powerline separators and DEC scan lines are drawn procedurally, so they join cleanly between cells.
 - **Decorations** (all underline styles, strike, overline, cursor shapes) are atlas sprites, so they need no extra draw calls.
 - **Paste**: with bracketed paste, any paste markers inside the text are removed (repeatedly, so removing one can't assemble another), so pasted text can never end the paste early and run as typed commands. Without it, control characters other than tab and newline are dropped.
-- **Search** highlighting costs O(1) per cell however many matches there are: matches are sorted, so each row walks them with a forward-only cursor.
+- **Search** highlights only the current match, so it costs one range check per cell however many matches there are.
 
 ## Testing
 

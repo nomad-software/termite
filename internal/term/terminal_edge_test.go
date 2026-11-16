@@ -342,3 +342,29 @@ func TestAltScreen1047ClearsWrap(t *testing.T) {
 func TestResetForgetsLastChar(t *testing.T) {
 	expectScreen(t, feed(newT(5, 2), "Q\x1bc\x1b[3b"), "", "")
 }
+
+// TestOSC7Paths checks that a directory sent unencoded keeps its #, ? and
+// %, and an encoded one is decoded.
+func TestOSC7Paths(t *testing.T) {
+	for in, want := range map[string]string{
+		"file://host/tmp/a#b":      "/tmp/a#b",
+		"file://host/tmp/a?b":      "/tmp/a?b",
+		"file://host/tmp/100%":     "/tmp/100%",
+		"file://host/tmp/a%20b":    "/tmp/a b",
+		"file:///home/me":          "/home/me",
+		"http://host/not/a/file":   "",
+		"file://host-without-path": "",
+	} {
+		tm := feed(newT(10, 2), "\x1b]7;"+in+"\x07")
+		if tm.Cwd != want {
+			t.Errorf("%s: Cwd %q, want %q", in, tm.Cwd, want)
+		}
+	}
+}
+
+// TestSoftResetKeepsMainCursor checks that DECSTR on the alternate screen
+// leaves the cursor the main screen saved for its return.
+func TestSoftResetKeepsMainCursor(t *testing.T) {
+	tm := feed(newT(10, 3), "\x1b[2;5H\x1b[?1049h\x1b[!p\x1b[?1049l")
+	expectCursor(t, tm, 4, 1)
+}

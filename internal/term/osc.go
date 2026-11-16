@@ -168,12 +168,23 @@ func (t *Terminal) oscDynamicColor(n int, s string) {
 	}
 }
 
+// oscCwd takes the directory from a file://host/path URL. Shells often
+// send $PWD unencoded, so a # or ? is part of the path, not a fragment or
+// query, and a % that is not an escape is taken as it is.
 func (t *Terminal) oscCwd(s string) {
-	u, err := url.Parse(s)
-	if err != nil || u.Scheme != "file" {
+	rest, ok := strings.CutPrefix(s, "file://")
+	if !ok {
 		return
 	}
-	t.Cwd = u.Path
+	i := strings.IndexByte(rest, '/')
+	if i < 0 {
+		return
+	}
+	path := rest[i:]
+	if p, err := url.PathUnescape(path); err == nil {
+		path = p
+	}
+	t.Cwd = path
 	t.events |= EvCwd
 }
 

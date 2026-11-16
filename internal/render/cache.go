@@ -29,8 +29,9 @@ type Sprite struct {
 	Color      bool
 }
 
-// GlyphCache rasterizes glyphs once into a shared atlas texture. GL
-// contexts of all panes share resources, so one cache serves them all.
+// GlyphCache rasterizes glyphs once into an atlas texture. GL contexts of
+// all panes share resources, so one cache serves every pane drawing its
+// font at its size on a screen of its scale.
 type GlyphCache struct {
 	Fonts *FontSet
 	atlas *Atlas
@@ -68,13 +69,14 @@ func (c *GlyphCache) allocTexture() {
 // Texture returns the atlas texture and its size.
 func (c *GlyphCache) Texture() (uint32, int) { return c.tex, c.size }
 
-// SetFonts replaces the fonts, invalidating every sprite.
-func (c *GlyphCache) SetFonts(f *FontSet) {
-	if c.Fonts != nil {
-		c.Fonts.Delete()
-	}
-	c.Fonts = f
-	c.reset()
+// Release deletes the atlas texture and the fonts' Qt objects; nothing is
+// drawn with the cache again. Fonts stays, so the cell size of a closed
+// pane that held it can still be read. A GL context of the share group
+// must be current.
+func (c *GlyphCache) Release() {
+	gl.DeleteTextures(1, &c.tex)
+	c.tex = 0
+	c.Fonts.Delete()
 }
 
 func (c *GlyphCache) reset() {

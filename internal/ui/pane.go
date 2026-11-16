@@ -87,6 +87,9 @@ type Pane struct {
 	R      *render.Renderer
 	cache  *render.GlyphCache
 	dpr    float64
+	// fontStep is how many steps of Larger (or, below 0, Smaller) text
+	// this pane alone is at (fontScale); it is never saved to the config.
+	fontStep int
 
 	view    render.View
 	viewTop int64 // -1: follow output
@@ -336,11 +339,12 @@ func (p *Pane) initGL() {
 	if hz := p.GL.Screen().RefreshRate(); hz >= 30 {
 		p.frameInterval = time.Duration(float64(time.Second) / hz)
 	}
-	p.cache = p.app.cacheFor(p.dpr)
+	p.cache = p.app.cacheFor(p.dpr, p.fontStep)
 	if p.R == nil {
 		p.R = render.NewRenderer(p.cache)
 	} else {
 		p.R.Cache = p.cache
+		qute.Post(p.app.pruneCaches) // the cache it had may be left unused
 	}
 	p.R.Style = p.app.styleFor(p)
 	if err := p.R.InitGL(); err != nil {
@@ -397,12 +401,15 @@ func (p *Pane) paint() {
 	if dpr := p.GL.AsQPaintDevice().DevicePixelRatioF(); dpr != p.dpr {
 		// moved to a screen with a different scale factor
 		p.dpr = dpr
-		p.cache = p.app.cacheFor(dpr)
+		p.cache = p.app.cacheFor(dpr, p.fontStep)
 		p.R.Cache = p.cache
 		p.R.Style = p.app.styleFor(p)
 		p.R.Invalidate()
 		p.cols = 0
 		p.updateGridSize()
+		// The old screen's cache goes if no pane is left there, once this
+		// paint is done: freeing it makes another pane's context current.
+		qute.Post(p.app.pruneCaches)
 	}
 	fw, fh := p.fbSize()
 	p.R.SetFramebufferSize(fw, fh)
@@ -432,6 +439,49 @@ func (p *Pane) paint() {
 	cw, ch := p.R.CellSize()
 	st := p.R.Style
 	p.GL.SetIMRect(int(float64(st.PadX+cx*cw)/p.dpr), int(float64(st.PadY+cy*ch)/p.dpr), int(float64(cw)/p.dpr), int(float64(ch)/p.dpr))
+}
+
+// Larger and Smaller text scale a pane's font by fontStepFactor a step,
+// from minFontStep to maxFontStep steps (about 32% to 460%). Whole steps,
+// not a scale multiplied each time, so that the same step is always the
+// same size: back at 0 a pane shares the usual size's glyph cache again.
+const (
+	fontStepFactor = 1.1
+	minFontStep    = -12
+	maxFontStep    = 16
+)
+
+// fontScale is the factor fontStep steps make.
+func fontScale(step int) float64 { return math.Pow(fontStepFactor, float64(step)) }
+
+// setFontStep puts p's text n steps from the config's font size, and draws
+// it so.
+func (p *Pane) setFontStep(n int) {
+	n = min(max(n, minFontStep), maxFontStep)
+	if n == p.fontStep {
+		return
+	}
+	p.fontStep = n
+	p.useFont()
+}
+
+// useFont points p's renderer at the glyph cache for its font, size and
+// screen, and lays the terminal out again in that size. Before its GL is
+// set up initGL does that.
+func (p *Pane) useFont() {
+	if p.R == nil || p.exited {
+		return
+	}
+	p.GL.MakeCurrent() // a new cache creates its texture
+	c := p.app.cacheFor(p.dpr, p.fontStep)
+	p.GL.DoneCurrent()
+	if c != p.cache {
+		p.cache, p.R.Cache = c, c
+		p.R.Invalidate()
+	}
+	p.cols = 0
+	p.updateGridSize()
+	p.invalidate()
 }
 
 // invalidate redraws everything (selection, search, theme changes).

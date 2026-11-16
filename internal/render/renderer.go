@@ -808,9 +808,9 @@ func (r *Renderer) buildOverlay() {
 		py := r.Style.PadY + r.curY*ch
 		x := r.curX
 		w := min(term.StringWidth(r.view.Preedit), r.cols-x) // its glyphs stop at the edge too
-		bg := r.defBg
+		fg, bg := r.defFg, r.defBg
 		if r.reverse {
-			bg = r.defFg
+			fg, bg = bg, fg
 		}
 		add(r.Style.PadX+x*cw, py, w*cw, ch, rgba(bg, 255))
 		for _, g := range graphemes(r.view.Preedit) {
@@ -824,7 +824,7 @@ func (r *Renderer) buildOverlay() {
 				k = glyphKey{ch: r.Cache.textID(g), kind: kindText, cells: uint8(gw)}
 			}
 			if s, ok := r.Cache.get(k, func() string { return g }); ok && ng < len(gov) {
-				gov[ng] = glyphInst{X: int16(r.Style.PadX + x*cw + int(s.OffX)), Y: int16(py + int(s.OffY)), W: s.W, H: s.H, U: s.X, V: s.Y, Color: rgba(r.defFg, 255)}
+				gov[ng] = glyphInst{X: int16(r.Style.PadX + x*cw + int(s.OffX)), Y: int16(py + int(s.OffY)), W: s.W, H: s.H, U: s.X, V: s.Y, Color: rgba(fg, 255)}
 				if s.Color {
 					gov[ng].Flags = flagColorGlyph
 				}
