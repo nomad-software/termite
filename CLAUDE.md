@@ -94,7 +94,8 @@ and architecture.
   pane's grid size meanwhile with `Tab.holdGrid`, or its program would see
   two resizes), and so does the focus reaching a hidden pane (`paneFocused`,
   a safety net). Alt+Arrows from a zoomed pane (`focusZoomed`) finds the
-  neighbour on the minimap's layout and unzooms only when there is one.
+  neighbour on the minimap's layout and zooms that one instead (the zoom
+  stays put when there is none).
   `zoomPane` moves the focus to the pane before hiding the others, so Qt
   never passes it along the panes being hidden. Shown by the
   header badge (`zoomBadge`, `zoomed` property), the tab title's
@@ -184,16 +185,20 @@ and architecture.
   program that is reading (`TestBigWriteArrives`).
 - Mouse reports follow the program's choice: SGR with ?1006, else X10
   (`EncodeMouse(…, sgr)`, through `Pane.mouseReport`).
-- Ligatures are drawn only over cells with no cursor, no IME preedit, no
-  decorations and one selection state (`plainRun`): the ligature path skips
-  the per-cell drawing and takes the first cell's colours.
+- Ligatures are drawn only over cells with no cursor (in either blink
+  phase, or they flicker with it), no IME preedit, no decorations and one
+  selection state (`plainRun`): the ligature path skips the per-cell
+  drawing and takes the first cell's colours, so under inverse or dim
+  (glyph drawn in the background colour) the backgrounds must match too
+  (`ligatureAt`).
 - Config: `Load` keeps what is valid when a value has the wrong type (only
   a syntax error falls back to the defaults); `normalize` clamps sizes to
   the ranges the Options dialog uses (`config.Min…/Max…`); `Validate`
   reports unknown key names and actions sharing a chord; misspelt keys,
   nested ones too, are found on their own (`unknownKeys`, matching as
   encoding/json does), so other problems never hide them. A binding whose
-  value is not a string keeps its default (`restoreBadBindings`), not
+  value is not a string (null included: the decoder takes it silently)
+  keeps its default (`restoreBadBindings`), not
   unbound. `Load` reports every problem at once, joined by "; " on one line (the pane headers show
   it). Start-up problems reach the pane headers through `NewApp`'s
   `loadErr`.

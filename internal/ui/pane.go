@@ -563,6 +563,11 @@ func (p *Pane) event(ev *qtcore.QEvent) bool {
 // dialog and comes back: changing them then would only flash, as the window
 // is painted again before the focus returns.
 func (p *Pane) focus(in bool, reason qtcore.FocusReason) {
+	// Qt can hand the focus back to a pane that closed under a menu or
+	// dialog: it must not become the tab's or the app's focused pane.
+	if p.exited {
+		return
+	}
 	p.view.Focused = in
 	p.view.BlinkOn = true
 	p.view.CursorDirty = true
@@ -1072,6 +1077,10 @@ func (p *Pane) paste(text string) {
 		if p.exited || !ok {
 			return
 		}
+		// The program may have changed its mind while the box was open.
+		p.T.Mu.Lock()
+		bracketed = p.T.BracketedPaste
+		p.T.Mu.Unlock()
 	}
 	p.sendInput(input.Paste(text, bracketed))
 }

@@ -98,6 +98,7 @@ func resolveLink(path string) string {
 // folder. It fails with an error matching fs.ErrExist if the file is
 // already there, which it leaves alone.
 func WriteSample(path string) error {
+	path = resolveLink(path) // a dangling link is followed, as SetValues does
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

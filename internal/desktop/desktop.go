@@ -12,7 +12,7 @@ import (
 )
 
 // Name is the name of the desktop entry, without its extension, and of the
-// icon. It is the name main.go gives Qt (QGuiApplication_SetDesktopFileName),
+// icon. It is the name main.go gives Qt (qtgui.QGuiApplicationSetDesktopFileName),
 // by which a Wayland desktop matches a window to its entry.
 const Name = "termite"
 

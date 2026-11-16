@@ -157,7 +157,7 @@ func Dir() string {
 func Path() string { return filepath.Join(Dir(), "config.json") }
 
 // Load reads the configuration file, falling back to defaults for
-// anything missing. A missing file is not an error.
+// anything missing. A missing or empty file is not an error.
 func Load(path string) (*Config, error) {
 	c := Default()
 	data, err := os.ReadFile(path)
@@ -166,6 +166,9 @@ func Load(path string) (*Config, error) {
 	}
 	if err != nil {
 		return c, err
+	}
+	if len(bytes.TrimSpace(data)) == 0 { // as SetValues takes it: {}
+		return c, nil
 	}
 	// Decoding over the defaults keeps unset fields, and merges the
 	// keybindings map (shared with c) with the default bindings.
@@ -181,6 +184,8 @@ func Load(path string) (*Config, error) {
 			return c, fmt.Errorf("%s: %w", path, describeJSONError(data, err))
 		}
 		typeErr = fmt.Errorf("%s: %w", path, err)
+	}
+	if out.Keybindings != nil {
 		restoreBadBindings(data, out.Keybindings)
 	}
 	if out.Themes == nil {
@@ -209,8 +214,8 @@ func Load(path string) (*Config, error) {
 }
 
 // restoreBadBindings gives back its default binding to each action whose
-// value in the file is not a string: the decoder leaves it "", which would
-// unbind it.
+// value in the file is not a string (null too, which the decoder takes
+// without complaint): the decoder leaves it "", which would unbind it.
 func restoreBadBindings(data []byte, kb map[string]string) {
 	var raw struct {
 		Keybindings map[string]json.RawMessage `json:"keybindings"`
@@ -219,8 +224,8 @@ func restoreBadBindings(data []byte, kb map[string]string) {
 		return
 	}
 	for action, v := range raw.Keybindings {
-		var s string
-		if json.Unmarshal(v, &s) == nil {
+		var s *string
+		if json.Unmarshal(v, &s) == nil && s != nil {
 			continue
 		}
 		if def, ok := DefaultKeybindings[action]; ok {

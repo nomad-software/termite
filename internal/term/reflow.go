@@ -143,6 +143,12 @@ func (b *Buffer) reflow(cols, cx, cy, lo, hi int, dst []Cell, dstWrap []bool) re
 			if c.Attr&AttrWide != 0 {
 				w = 2
 			}
+			span := w // cells it takes in para, a wide char's right half too
+			// One column narrows a wide char, before it is fitted.
+			if w == 2 && cols < 2 {
+				c.Attr &^= AttrWide
+				w = 1
+			}
 			if lx+w > cols {
 				if line != nil && lx < cols {
 					line[lx].Attr |= AttrWrapPad // the wide char wraps
@@ -152,15 +158,10 @@ func (b *Buffer) reflow(cols, cx, cy, lo, hi int, dst []Cell, dstWrap []bool) re
 			if k == cursorOff {
 				st.curLine, st.curX = st.lines, lx
 			}
-			span := w // cells it takes in para, a wide char's right half too
-			if w == 2 && cols < 2 {
-				c.Attr &^= AttrWide
-				w = 1
-			}
 			if line != nil {
 				line[lx] = c
 				if w == 2 {
-					line[lx+1] = Cell{Fg: c.Fg, Bg: c.Bg, Attr: AttrWideCont | c.Attr&AttrStyleMask}
+					line[lx+1] = Cell{Fg: c.Fg, Bg: c.Bg, Attr: AttrWideCont | c.Attr&AttrStyleMask, Extra: c.Extra}
 				}
 			}
 			content = content || isContent(&c)

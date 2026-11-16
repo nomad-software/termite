@@ -207,8 +207,8 @@ func (s *Session) finish() {
 	}
 }
 
-// Write queues input for the child. It never blocks: input arriving while
-// more than maxQueued waits for a child that isn't reading is dropped. A
+// Write queues input for the child. It never blocks: input that would take
+// what waits for a child that isn't reading past maxQueued is dropped. A
 // single write is taken whole whatever its size when nothing is waiting,
 // so a big paste into a program that is reading arrives in full.
 func (s *Session) Write(p []byte) {
@@ -276,13 +276,22 @@ func (s *Session) ForegroundCwd() string {
 	return dir
 }
 
-// ForegroundName returns the command name of the foreground process.
+// ForegroundName returns the command name of the PTY's foreground process
+// group's leader, or the child's when there is none or the leader has
+// exited (as ForegroundCwd).
 func (s *Session) ForegroundName() string {
-	pgid := s.foregroundPgid()
-	if pgid <= 0 {
+	if !s.closed.Load() {
+		if pgid := s.foregroundPgid(); pgid > 0 {
+			if b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pgid)); err == nil {
+				return strings.TrimSpace(string(b))
+			}
+		}
+	}
+	pid := s.Pid()
+	if pid == 0 {
 		return ""
 	}
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pgid))
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
 	if err != nil {
 		return ""
 	}

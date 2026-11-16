@@ -123,7 +123,7 @@ func (t *Tab) insert(p *Pane, orient qtcore.Orientation, np *Pane, before bool) 
 		par.split.InsertWidget(at, np.Widget)
 		leaf.parent = par
 		par.children = append(par.children[:at], append([]*Node{leaf}, par.children[at:]...)...)
-		if idx < len(sizes) {
+		if idx >= 0 && idx < len(sizes) {
 			half := sizes[idx] / 2
 			sizes[idx] -= half
 			sizes = append(sizes[:at], append([]int{half}, sizes[at:]...)...)

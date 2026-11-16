@@ -295,7 +295,7 @@ func appendLowerASCII(dst, s []byte) []byte {
 	return dst
 }
 
-var urlRe = regexp.MustCompile(`(?:https?|ftp|file)://[^\s<>"'\x60]+|mailto:[^\s<>"']+|www\.[^\s<>"']+`)
+var urlRe = regexp.MustCompile(`(?:https?|ftp|file)://[^\s<>"'\x60]+|mailto:[^\s<>"'\x60]+|www\.[^\s<>"'\x60]+`)
 
 // URLAt returns a plain-text URL under p, with its extent.
 func (b *Buffer) URLAt(p Pos) (string, Match, bool) {

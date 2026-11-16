@@ -61,15 +61,18 @@ func (p *Pane) scheduleHeaderRefresh() {
 
 // refreshHeader re-reads the directory and foreground program.
 func (p *Pane) refreshHeader() {
-	dir := p.cwd()
-	if dir != p.headerDir {
+	changed := false
+	if dir := p.cwd(); dir != p.headerDir {
 		p.headerDir = dir
 		p.layoutHeader()
-		p.tab.win.updateTitles()
+		changed = true
 	}
 	if prog := p.S.ForegroundName(); prog != p.program {
 		p.program = prog
-		p.app.paneTitleChanged(p)
+		changed = true
+	}
+	if changed {
+		p.tab.win.updateTitles()
 	}
 }
 

@@ -1,6 +1,7 @@
 package term
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -367,4 +368,44 @@ func TestOSC7Paths(t *testing.T) {
 func TestSoftResetKeepsMainCursor(t *testing.T) {
 	tm := feed(newT(10, 3), "\x1b[2;5H\x1b[?1049h\x1b[!p\x1b[?1049l")
 	expectCursor(t, tm, 4, 1)
+}
+
+// TestReflowKeepsWideLink checks that reflow keeps a wide character's
+// link on its right half too, so the link's extent stays whole.
+func TestReflowKeepsWideLink(t *testing.T) {
+	tm := feed(New(10, 3, 10), "a\x1b]8;;http://x\x1b\\中文\x1b]8;;\x1b\\b")
+	tm.Resize(4, 3) // "a中" then "文b"
+	tm.Resize(10, 3)
+	b := tm.buf
+	line := int64(b.Count() - 3)
+	want := Match{Start: Pos{Line: line, Col: 1}, End: Pos{Line: line, Col: 5}}
+	for col := 1; col < 5; col++ {
+		if m, ok := tm.LinkExtent(Pos{Line: line, Col: col}); !ok || m != want {
+			t.Errorf("col %d: %v %v, want %v", col, m, ok, want)
+		}
+	}
+}
+
+// TestReflowWideOneColumn checks that a wide character narrowed to fit one
+// column wraps no empty line before it.
+func TestReflowWideOneColumn(t *testing.T) {
+	b := NewBuffer(4, 2, 10)
+	b.Line(0)[0] = Cell{Ch: '中', Attr: AttrWide}
+	b.Line(0)[1] = Cell{Attr: AttrWideCont}
+	nb, _, _, _ := b.Resize(1, 2, true, 2, 0, false)
+	if c := nb.LogicalLine(0)[0]; c.Ch != '中' || nb.Wrapped(0) {
+		t.Errorf("first line holds %q (wrapped %v), want 中", c.Ch, nb.Wrapped(0))
+	}
+}
+
+// TestURLAtBacktick checks that a URL quoted in backticks (Markdown code)
+// leaves the closing backtick out, whatever its scheme.
+func TestURLAtBacktick(t *testing.T) {
+	for _, u := range []string{"https://x.org/a", "www.x.org", "mailto:a@x.org"} {
+		tm := feed(New(40, 2, 10), "see `"+u+"` ok")
+		top := tm.buf.ScreenTopAbs()
+		if got, _, ok := tm.buf.URLAt(Pos{top, 6}); !ok || !strings.HasSuffix(got, u) || strings.Contains(got, "`") {
+			t.Errorf("%q: %q %v", u, got, ok)
+		}
+	}
 }

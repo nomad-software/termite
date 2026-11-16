@@ -113,13 +113,15 @@ work, through `glFinish`) and the instances each drew.
 at start-up. After editing it by hand, press Ctrl+Shift+R (`reload_config`)
 to apply the changes without a restart. `termite --write-config` writes every
 option with its default (to the `--config` path when one is given), and
-never overwrites an existing file. Settings saved from the Options dialog
+never overwrites an existing file (a dangling symlink is followed, creating
+the file it names). Settings saved from the Options dialog
 keep a symlinked config file a symlink, writing to the file it points at. Problems (misspelt keys, bad values, values
 of the wrong type, unknown key names, two actions on one shortcut, syntax
 errors with their line) are shown in red in every pane's header, from
 start-up, until the file is fixed; whatever is valid still applies (a file
-that isn't JSON at all falls back to the defaults, and a shortcut given as
-something other than a string keeps its default). Sizes outside the
+that isn't JSON at all falls back to the defaults, an empty one loads them
+with no complaint, and a shortcut given as something other than a string,
+null too, keeps its default; `"none"` unbinds it). Sizes outside the
 Options dialog's ranges are brought within them.
 
 Most options can also be set in the **Options** dialog (right-click →
@@ -210,11 +212,11 @@ them are not redrawn. While zoomed, the pane's header reads `⤢ Zoomed: 2
 panes hidden`, the tab's title starts with ⤢, and a minimap in the pane's
 top right corner draws the tab's layout with the zoomed pane filled in
 (and hidden panes that broadcast input reaches tinted). Click a pane on
-the map to zoom it instead, or the zoomed one to show them all. Splitting,
-moving the focus with Alt+Arrows to a hidden pane, or the zoomed pane
-closing also shows them (Alt+Arrows towards the window's edge leaves the
-zoom alone); a hidden pane closing keeps the zoom, and the zoomed pane's
-program sees no resize.
+the map to zoom it instead, or the zoomed one to show them all.
+Alt+Arrows moves the zoom to the neighbouring pane that way, as the panes
+lay before the zoom (towards the window's edge it leaves the zoom alone).
+Splitting or the zoomed pane closing also shows them; a hidden pane
+closing keeps the zoom, and the zoomed pane's program sees no resize.
 
 Larger text (Ctrl+=), Smaller text (Ctrl+-) and Reset text size (Ctrl+0)
 change the pane you are typing in alone, in steps of 10% (each the last

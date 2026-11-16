@@ -10,7 +10,7 @@ type Buffer struct {
 	Cols, Rows int
 	maxLines   int // Rows + scrollback capacity
 
-	cells   []Cell // alloc*Cols cells
+	cells   []Cell // maxLines*Cols cells
 	wrapped []bool // per physical line: soft-wrapped into the next line
 	start   int    // physical index of logical line 0
 	count   int    // logical lines in use, always >= Rows

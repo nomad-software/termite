@@ -109,7 +109,7 @@ type Renderer struct {
 	defFg, defBg  uint32
 	cursorColor   uint32
 	reverse       bool
-	curX, curY    int // cursor row in view coordinates (-1 hidden)
+	curX, curY    int // cursor column, and row in view coordinates (-1 off the view)
 	curVisible    bool
 	curStyle      int
 	curBlink      bool
@@ -552,7 +552,10 @@ func (r *Renderer) buildRow(y int) {
 		defBg = r.defFg
 	}
 
-	cursorHere := y == r.curY && r.curVisible && (!r.curBlink || r.view.BlinkOn || !r.view.Focused)
+	// cursorRow holds through the blink's off phase too: a ligature over
+	// the cursor would come and go with the blink.
+	cursorRow := y == r.curY && r.curVisible
+	cursorHere := cursorRow && (!r.curBlink || r.view.BlinkOn || !r.view.Focused)
 	curStyle := r.curStyle
 	preStart, preEnd := -1, -1
 	if y == r.curY && r.view.Preedit != "" {
@@ -649,7 +652,7 @@ func (r *Renderer) buildRow(y int) {
 			}
 			// optional ligatures over runs of ASCII punctuation
 			if r.Style.Ligatures && c.Attr&term.AttrCluster == 0 && c.Ch < 0x80 && ligatureStart[c.Ch] {
-				if n, s := r.ligatureAt(line, x, style); n > 1 && r.plainRun(line, r.extras[y*cols:(y+1)*cols], abs, x, n, cursorHere, preStart, preEnd) {
+				if n, s := r.ligatureAt(line, x, style); n > 1 && r.plainRun(line, r.extras[y*cols:(y+1)*cols], abs, x, n, cursorRow, preStart, preEnd) {
 					addGlyph(s, x*cw, py, rgba(fg, 255))
 					// draw backgrounds for the following cells, then skip them
 					for k := 1; k < n; k++ {
@@ -743,8 +746,8 @@ func (r *Renderer) buildRow(y int) {
 // none of them may have the cursor, the IME preedit ([preStart, preEnd))
 // or a line drawn over or under it, and the selection (or current match)
 // covers all of them or none.
-func (r *Renderer) plainRun(line []term.Cell, extras []term.Extra, abs int64, x, n int, cursorHere bool, preStart, preEnd int) bool {
-	if cursorHere && r.curX >= x && r.curX < x+n || preStart < x+n && x < preEnd {
+func (r *Renderer) plainRun(line []term.Cell, extras []term.Extra, abs int64, x, n int, cursorRow bool, preStart, preEnd int) bool {
+	if cursorRow && r.curX >= x && r.curX < x+n || preStart < x+n && x < preEnd {
 		return false
 	}
 	selected := r.inSelection(abs, x) || r.inCurrentMatch(abs, x)
@@ -770,8 +773,11 @@ func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8) (int, Sprite
 		for k := 0; k < n; k++ {
 			c := line[x+k]
 			// A cluster cell's Ch is an index into the cluster table,
-			// which can equal an ASCII character's code.
-			if c.Ch != rune(cand[k]) || c.Attr&term.AttrCluster != 0 || c.Attr&term.AttrStyleMask != line[x].Attr&term.AttrStyleMask || c.Fg != line[x].Fg {
+			// which can equal an ASCII character's code. Inverse and dim
+			// draw the glyph in (or mixed with) the background colour, so
+			// then the backgrounds must match as well.
+			if c.Ch != rune(cand[k]) || c.Attr&term.AttrCluster != 0 || c.Attr&term.AttrStyleMask != line[x].Attr&term.AttrStyleMask || c.Fg != line[x].Fg ||
+				line[x].Attr&(term.AttrInverse|term.AttrDim) != 0 && c.Bg != line[x].Bg {
 				match = false
 				break
 			}

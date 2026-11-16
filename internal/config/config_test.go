@@ -226,6 +226,43 @@ func TestLoadNullKeybindings(t *testing.T) {
 	}
 }
 
+// TestLoadNullBindingAndEmptyFile checks that a binding given as null keeps
+// its default (the decoder takes null without complaint and would leave it
+// unbound), and that an empty file loads as the defaults with no error.
+func TestLoadNullBindingAndEmptyFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	os.WriteFile(p, []byte(`{"keybindings": {"copy": null, "paste": ""}}`), 0o644)
+	c, err := Load(p)
+	if err != nil || c.Keybindings["copy"] != DefaultKeybindings["copy"] || c.Keybindings["paste"] != "" {
+		t.Errorf("copy %q, paste %q, %v", c.Keybindings["copy"], c.Keybindings["paste"], err)
+	}
+	for _, data := range []string{"", " \n\t"} {
+		os.WriteFile(p, []byte(data), 0o644)
+		if c, err := Load(p); err != nil || c.FontSize != Default().FontSize {
+			t.Errorf("empty file %q: %v", data, err)
+		}
+	}
+}
+
+// TestWriteSampleDanglingLink checks that a dangling symlink is followed,
+// as SetValues follows it, creating its target and keeping the link.
+func TestWriteSampleDanglingLink(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(dir, "config.json")
+	if err := os.Symlink(filepath.Join("dotfiles", "termite.json"), link); err != nil {
+		t.Skip(err)
+	}
+	if err := WriteSample(link); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Lstat(link); err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Error("the link was replaced")
+	}
+	if _, err := Load(link); err != nil {
+		t.Error(err)
+	}
+}
+
 // TestKeybindingClash checks that two actions on one chord are reported,
 // and that the same one of them gets it every time.
 func TestKeybindingClash(t *testing.T) {

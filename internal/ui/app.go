@@ -250,14 +250,12 @@ func (a *App) NewWindow(layout *LayoutFile) *Window {
 	return w
 }
 
+// allPanes lists every window's panes, from w.list: a tab whose page Qt
+// has taken out while it moves is still there.
 func (a *App) allPanes() []*Pane {
 	var out []*Pane
 	for _, w := range a.windows {
-		for i := 0; i < w.tabs.Count(); i++ {
-			if t := w.tabAt(i); t != nil {
-				out = append(out, t.Panes()...)
-			}
-		}
+		out = append(out, w.allPanes()...)
 	}
 	return out
 }
@@ -294,8 +292,6 @@ func (a *App) paneFocused(p *Pane) {
 	p.tab.focused = p
 	p.tab.win.updateTitles()
 }
-
-func (a *App) paneTitleChanged(p *Pane) { p.tab.win.updateTitles() }
 
 func (a *App) bell(p *Pane) {
 	w := p.tab.win.w

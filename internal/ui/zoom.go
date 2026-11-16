@@ -20,9 +20,9 @@ import (
 // zooms that one instead; clicking the zoomed one undoes the zoom.
 //
 // Anything that changes the split tree undoes the zoom first (splitting,
-// moving a pane, a pane closing), and so does moving the focus to a hidden
-// pane (Alt+Arrows, focusZoomed); when a hidden pane closes the zoom is
-// made again afterwards.
+// moving a pane, a pane closing); when a hidden pane closes the zoom is
+// made again afterwards. Moving the focus with Alt+Arrows (focusZoomed)
+// takes the zoom along to the pane it reaches.
 
 // zoomMark starts the title of a tab whose pane is zoomed, and the header
 // of that pane.
@@ -64,10 +64,11 @@ func (t *Tab) zoomPane(p *Pane) {
 	t.cancelDrag() // the panes it could be dropped on are going
 	// The focus goes to p before the pane that has it is hidden: Qt would
 	// pass it along the tab's panes as they go, each telling its program
-	// it had the focus and lost it.
-	if fw := qtwidgets.QApplicationFocusWidget(); fw != nil && fw.Ptr() != p.GL.Ptr() {
+	// it had the focus and lost it. That holds for any widget of a pane
+	// (its search bar too), so long as it isn't p's own.
+	if fw := qtwidgets.QApplicationFocusWidget(); fw != nil && !p.Widget.IsAncestorOf(fw) {
 		for _, q := range t.Panes() {
-			if fw.Ptr() == q.GL.Ptr() {
+			if q.Widget.IsAncestorOf(fw) {
 				p.GL.SetFocus()
 				break
 			}
@@ -129,9 +130,9 @@ func (t *Tab) unzoom() {
 	t.zoomChanged(z.pane)
 }
 
-// focusZoomed moves the focus from p, zoomed, to its neighbour in
-// direction (dx, dy), found where the panes were before the zoom, which is
-// undone then. With no neighbour that way the zoom stays.
+// focusZoomed moves the zoom and the focus from p, zoomed, to its
+// neighbour in direction (dx, dy), found where the panes were before the
+// zoom. With no neighbour that way the zoom stays on p.
 func (t *Tab) focusZoomed(p *Pane, dx, dy int) {
 	var cur rect
 	var others []*Pane
@@ -144,9 +145,10 @@ func (t *Tab) focusZoomed(p *Pane, dx, dy int) {
 			rects = append(rects, c.r)
 		}
 	}
-	// The cursor's place across the pane, scaled to where the pane was.
+	// The cursor's place across the pane, scaled to where the pane was:
+	// cur is the whole pane (header too), so r is.
 	px, py := cursorPoint(p)
-	r := paneRect(p)
+	r := widgetRect(p.Widget)
 	probe := cur.y + (py-r.y)/r.h*cur.h
 	if dy != 0 {
 		probe = cur.x + (px-r.x)/r.w*cur.w
@@ -155,8 +157,7 @@ func (t *Tab) focusZoomed(p *Pane, dx, dy int) {
 	if i < 0 {
 		return
 	}
-	t.unzoom()
-	others[i].GL.SetFocus()
+	t.zoomPane(others[i])
 }
 
 // updateZoomMap redraws the minimap, if the tab has one.

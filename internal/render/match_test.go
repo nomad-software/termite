@@ -108,3 +108,26 @@ func TestInSelection(t *testing.T) {
 		}
 	}
 }
+
+// TestLigatureBackgrounds checks that a ligature drawn in the background
+// colour (inverse, or mixed with it, dim) only spans cells of one
+// background, while plain text keeps it across backgrounds.
+func TestLigatureBackgrounds(t *testing.T) {
+	c := &GlyphCache{m: map[glyphKey]Sprite{}, textIndex: map[string]rune{}}
+	key := glyphKey{ch: c.textID("->"), kind: kindText, cells: 2}
+	c.m[key] = Sprite{W: 1, H: 1} // cached, so nothing is rasterized
+	r := &Renderer{Cache: c}
+	for _, tc := range []struct {
+		attr term.Attr
+		want int
+	}{{0, 2}, {term.AttrInverse, 0}, {term.AttrDim, 0}} {
+		line := []term.Cell{{Ch: '-', Bg: 1, Attr: tc.attr}, {Ch: '>', Bg: 4, Attr: tc.attr}}
+		if n, _ := r.ligatureAt(line, 0, 0); n != tc.want {
+			t.Errorf("attr %v, backgrounds differing: %d cells, want %d", tc.attr, n, tc.want)
+		}
+		line[1].Bg = 1
+		if n, _ := r.ligatureAt(line, 0, 0); n != 2 {
+			t.Errorf("attr %v, one background: %d cells, want 2", tc.attr, n)
+		}
+	}
+}
