@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/nomad-software/qute"
 	"github.com/nomad-software/qute/qtcore"
@@ -259,7 +260,6 @@ func newZoomMap(t *Tab, p *Pane) *zoomMap {
 	w.SetObjectName("termiteZoomMap")
 	w.SetFocusPolicy(qtcore.NoFocus)
 	setCursorShape(w, qtcore.PointingHandCursor)
-	w.SetToolTip("Other panes are hidden. Click one to show it instead, or this one to show them all.")
 	w.Hide() // until zoomPane shows it
 	return m
 }
@@ -282,9 +282,14 @@ func (m *zoomMap) place() {
 	m.SetGeometryRect(qtcore.QRect{X: max(x, 0), Y: y, Width: zoomMapWidth, Height: h})
 }
 
+// zoomMapBorder is the width of the minimap's outline, the drop zone's
+// (termiteDropZone in applyTheme).
+const zoomMapBorder = 2
+
 // inner is where the map draws the panes, inside its border.
 func (m *zoomMap) inner() rect {
-	return rect{3, 3, float64(m.Width() - 6), float64(m.Height() - 6)}
+	b := float64(zoomMapBorder)
+	return rect{b, b, float64(m.Width()) - 2*b, float64(m.Height()) - 2*b}
 }
 
 // focusTintAlpha is the opacity, out of 255, of the focused header's colour
@@ -296,29 +301,48 @@ func themeColor(c uint32, alpha uint8) qtgui.QColor {
 	return qtgui.QColor{R: uint8(c >> 16), G: uint8(c >> 8), B: uint8(c), A: alpha}
 }
 
-// PaintEvent overrides QWidget::paintEvent: the tab's layout in the pane
-// header colours, the zoomed pane filled in, and a hidden pane that typing
-// reaches (broadcast) tinted.
+// PaintEvent overrides QWidget::paintEvent: the tab's layout drawn like a
+// drop zone (dragpane.go) over the terminal's background. The outline and
+// the lines between panes are the focused header's colour, the zoomed pane
+// is tinted with it as a drop zone is, and a hidden pane that typing
+// reaches (broadcast) more faintly. Panes share the lines between them.
 func (m *zoomMap) PaintEvent(*qtgui.QPaintEvent) {
 	th := m.t.win.app.theme
+	app := m.t.win.app
 	pr := qtgui.NewQPainterOn(m)
 	defer pr.End()
 	w, h := m.Width(), m.Height()
-	pr.FillRect(qtcore.QRect{Width: w, Height: h}, themeColor(th.HeaderBg, 235))
-	pr.SetBrushStyle(qtcore.NoBrush)
-	pr.SetPenColor(themeColor(th.HeaderFg, 255))
-	pr.DrawRect(qtcore.QRect{Width: w - 1, Height: h - 1})
-	app := m.t.win.app
-	for _, c := range m.t.mapCells(m.inner()) {
-		r := qtcore.QRect{X: int(c.r.x) + 1, Y: int(c.r.y) + 1, Width: int(c.r.w) - 2, Height: int(c.r.h) - 2}
+	pr.FillRect(qtcore.QRect{Width: w, Height: h}, themeColor(th.Background, 235))
+	type box struct{ x0, y0, x1, y1 int }
+	cells := m.t.mapCells(m.inner())
+	boxes := make([]box, len(cells))
+	for i, c := range cells {
+		b := box{int(math.Round(c.r.x)), int(math.Round(c.r.y)), int(math.Round(c.r.x + c.r.w)), int(math.Round(c.r.y + c.r.h))}
+		boxes[i] = b
+		r := qtcore.QRect{X: b.x0, Y: b.y0, Width: b.x1 - b.x0, Height: b.y1 - b.y0}
 		switch {
 		case c.p == m.t.zoomed():
-			pr.FillRect(r, themeColor(th.HeaderFocusBg, 255))
-		case app.broadcastsTo(c.p):
 			pr.FillRect(r, themeColor(th.HeaderFocusBg, focusTintAlpha))
+		case app.broadcastsTo(c.p):
+			pr.FillRect(r, themeColor(th.HeaderFocusBg, focusTintAlpha/2))
 		}
-		pr.SetPenColor(themeColor(th.HeaderFg, 200))
-		pr.DrawRect(qtcore.QRect{X: r.X, Y: r.Y, Width: r.Width - 1, Height: r.Height - 1})
+	}
+	line := themeColor(th.HeaderFocusBg, 255)
+	for _, b := range boxes {
+		if b.x1 < w-zoomMapBorder {
+			pr.FillRect(qtcore.QRect{X: b.x1, Y: b.y0, Width: 1, Height: b.y1 - b.y0}, line)
+		}
+		if b.y1 < h-zoomMapBorder {
+			pr.FillRect(qtcore.QRect{X: b.x0, Y: b.y1, Width: b.x1 - b.x0, Height: 1}, line)
+		}
+	}
+	for _, r := range []qtcore.QRect{
+		{Width: w, Height: zoomMapBorder},
+		{Y: h - zoomMapBorder, Width: w, Height: zoomMapBorder},
+		{Width: zoomMapBorder, Height: h},
+		{X: w - zoomMapBorder, Width: zoomMapBorder, Height: h},
+	} {
+		pr.FillRect(r, line)
 	}
 }
 
