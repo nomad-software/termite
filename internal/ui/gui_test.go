@@ -884,3 +884,31 @@ func TestLastPaneExitsUnderOptions(t *testing.T) {
 		}
 	})
 }
+
+// TestLayoutFailedPane opens a layout whose nested split's first pane, and
+// a tab's, runs a command that is not there: the default shell starts in
+// its place and the pane says why, rather than the whole split or tab
+// being left out.
+func TestLayoutFailedPane(t *testing.T) {
+	needGUI(t)
+	qutetest.Run(t, func() {
+		_, w := newTestApp(t)
+		missing := filepath.Join(t.TempDir(), "no-such-program")
+		lf := &LayoutFile{Tabs: []LayoutNode{{Split: "columns", Children: []LayoutNode{
+			{},
+			{Split: "rows", Children: []LayoutNode{{Command: []string{missing}}, {}}},
+		}}, {Command: []string{missing}}}} // and a tab's only pane
+		w.loadLayout(lf)
+		if !qutetest.WaitFor(func() bool { return len(w.list) == 2 && len(w.list[0].Panes()) == 3 }, 5*time.Second) {
+			t.Fatalf("%d tabs; want the layout's 2, the first with 3 panes", len(w.list))
+		}
+		for _, p := range []*Pane{w.list[0].Panes()[1], w.list[1].focused} {
+			p.T.Mu.Lock()
+			said := len(p.T.Buf().Search("no-such-program", true)) > 0
+			p.T.Mu.Unlock()
+			if !said {
+				t.Error("a stand-in pane does not say why its command failed")
+			}
+		}
+	})
+}

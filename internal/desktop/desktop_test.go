@@ -44,11 +44,35 @@ func TestExecQuoting(t *testing.T) {
 	}
 }
 
+// inAppImage sets the environment an AppImage's runtime gives the program
+// it holds: the AppImage, and the folder it is mounted on, which holds the
+// program running (the test).
+func inAppImage(t *testing.T, image string) {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("APPIMAGE", image)
+	t.Setenv("APPDIR", filepath.Dir(self))
+}
+
 func TestExecutable(t *testing.T) {
 	// An AppImage is started again through the AppImage itself.
-	t.Setenv("APPIMAGE", "/home/me/Apps/termite-x86_64.AppImage")
+	inAppImage(t, "/home/me/Apps/termite-x86_64.AppImage")
 	if got, err := Executable(); err != nil || got != "/home/me/Apps/termite-x86_64.AppImage" {
 		t.Errorf("in an AppImage: %q, %v", got, err)
+	}
+
+	// Another program's AppImage that started termite passes its own on,
+	// for a folder termite is not in.
+	t.Setenv("APPDIR", t.TempDir())
+	if got, err := Executable(); err != nil || got == "/home/me/Apps/termite-x86_64.AppImage" {
+		t.Errorf("started by another AppImage: %q, %v", got, err)
+	}
+	t.Setenv("APPDIR", "")
+	if got, err := Executable(); err != nil || got == "/home/me/Apps/termite-x86_64.AppImage" {
+		t.Errorf("$APPIMAGE without $APPDIR: %q, %v", got, err)
 	}
 
 	// Otherwise it is the program itself, with any links followed.
@@ -121,7 +145,7 @@ func TestWrite(t *testing.T) {
 func TestInstall(t *testing.T) {
 	data := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", data)
-	t.Setenv("APPIMAGE", "/home/me/Apps/My termite.AppImage")
+	inAppImage(t, "/home/me/Apps/My termite.AppImage")
 
 	icon := []byte("\x89PNG icon")
 	if err := Install(icon); err != nil {

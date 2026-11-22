@@ -22,8 +22,8 @@ type glyphKey struct {
 	cells uint8
 }
 
-// Sprite locates a glyph in the atlas.
-type Sprite struct {
+// sprite locates a glyph in the atlas.
+type sprite struct {
 	X, Y, W, H uint16
 	OffX, OffY int16
 	Color      bool
@@ -37,7 +37,7 @@ type GlyphCache struct {
 	atlas *Atlas
 	tex   uint32
 	size  int
-	m     map[glyphKey]Sprite
+	m     map[glyphKey]sprite
 	// Gen changes whenever cached sprites are invalidated.
 	Gen       int
 	textIndex map[string]rune // ids of strings drawn as kindText sprites
@@ -46,12 +46,12 @@ type GlyphCache struct {
 
 // NewGlyphCache creates a cache for fonts. A GL context must be current.
 func NewGlyphCache(fonts *FontSet) *GlyphCache {
-	c := &GlyphCache{Fonts: fonts, m: map[glyphKey]Sprite{}, textIndex: map[string]rune{}}
+	c := &GlyphCache{Fonts: fonts, m: map[glyphKey]sprite{}, textIndex: map[string]rune{}}
 	var maxTex int32
 	gl.GetIntegerv(gl.MAX_TEXTURE_SIZE, &maxTex)
 	c.maxSize = int(min(maxTex, 8192))
 	c.size = min(2048, c.maxSize)
-	c.atlas = NewAtlas(c.size, c.size)
+	c.atlas = newAtlas(c.size, c.size)
 	gl.GenTextures(1, &c.tex)
 	c.allocTexture()
 	return c
@@ -80,7 +80,7 @@ func (c *GlyphCache) Release() {
 }
 
 func (c *GlyphCache) reset() {
-	c.m = map[glyphKey]Sprite{}
+	c.m = map[glyphKey]sprite{}
 	c.atlas.Reset()
 	c.Gen++
 }
@@ -97,7 +97,7 @@ func (c *GlyphCache) textID(s string) rune {
 
 // get returns the sprite for key, rasterizing it on first use. It returns
 // ok=false if the glyph has no visible pixels, or doesn't fit in the atlas.
-func (c *GlyphCache) get(k glyphKey, text func() string) (Sprite, bool) {
+func (c *GlyphCache) get(k glyphKey, text func() string) (sprite, bool) {
 	if s, ok := c.m[k]; ok {
 		return s, s.W > 0
 	}
@@ -109,27 +109,27 @@ func (c *GlyphCache) get(k glyphKey, text func() string) (Sprite, bool) {
 		a := drawDecoration(int(k.ch), w, fs.CellH, fs.ULPos, fs.ULThick, fs.StrikePos)
 		r = maskToRaster(a, w, fs.CellH)
 	default:
-		if k.kind == kindRune && IsProcedural(k.ch) {
+		if k.kind == kindRune && isProcedural(k.ch) {
 			w := fs.CellW * int(k.cells)
-			if a, ok := DrawProcedural(k.ch, w, fs.CellH); ok {
+			if a, ok := drawProcedural(k.ch, w, fs.CellH); ok {
 				r = maskToRaster(a, w, fs.CellH)
 			} else {
-				r = fs.Rasterize(text(), int(k.style), int(k.cells))
+				r = fs.rasterize(text(), int(k.style), int(k.cells))
 			}
 		} else {
-			r = fs.Rasterize(text(), int(k.style), int(k.cells))
+			r = fs.rasterize(text(), int(k.style), int(k.cells))
 		}
 	}
 	if r.w == 0 {
-		c.m[k] = Sprite{}
-		return Sprite{}, false
+		c.m[k] = sprite{}
+		return sprite{}, false
 	}
 	x, y, ok := c.atlas.Alloc(r.w, r.h)
 	if !ok {
 		// Grow the atlas if possible, otherwise start over.
 		if c.size < c.maxSize {
 			c.size *= 2
-			c.atlas = NewAtlas(c.size, c.size)
+			c.atlas = newAtlas(c.size, c.size)
 			c.allocTexture()
 		}
 		c.reset()
@@ -137,14 +137,14 @@ func (c *GlyphCache) get(k glyphKey, text func() string) (Sprite, bool) {
 		if !ok {
 			// Too big even for an empty atlas: remember that, or every
 			// frame would clear the atlas again trying.
-			c.m[k] = Sprite{}
-			return Sprite{}, false
+			c.m[k] = sprite{}
+			return sprite{}, false
 		}
 	}
 	gl.BindTexture(gl.TEXTURE_2D, c.tex)
 	gl.PixelStorei(gl.UNPACK_ALIGNMENT, 4)
 	gl.TexSubImage2D(gl.TEXTURE_2D, 0, int32(x), int32(y), int32(r.w), int32(r.h), gl.BGRA, gl.UNSIGNED_BYTE, unsafe.Pointer(&r.pix[0]))
-	s := Sprite{X: uint16(x), Y: uint16(y), W: uint16(r.w), H: uint16(r.h), OffX: int16(r.offX), OffY: int16(r.offY), Color: r.color}
+	s := sprite{X: uint16(x), Y: uint16(y), W: uint16(r.w), H: uint16(r.h), OffX: int16(r.offX), OffY: int16(r.offY), Color: r.color}
 	c.m[k] = s
 	return s, true
 }

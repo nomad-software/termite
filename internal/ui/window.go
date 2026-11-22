@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -33,7 +34,8 @@ func newWindow(a *App) *Window {
 	w.w.SetWindowIcon(AppIcon())
 	width, height := a.cfg.WindowWidth, a.cfg.WindowHeight
 	if width < 200 || height < 100 {
-		width, height = 900, 560
+		d := config.Default()
+		width, height = d.WindowWidth, d.WindowHeight
 	}
 	w.w.Resize(width, height)
 	lay := qtwidgets.NewQVBoxLayout(w.w)
@@ -99,6 +101,7 @@ func (w *Window) applyTheme() {
 			c := themeColor(th.HeaderFocusBg, focusTintAlpha)
 			return fmt.Sprintf("rgba(%d, %d, %d, %d)", c.R, c.G, c.B, c.A)
 		}(),
+		"$border", strconv.Itoa(zoomMapBorder), // the minimap's too
 		"$font", strconv.Quote(family),
 		"$size", strconv.FormatFloat(size, 'f', 1, 64),
 	).Replace(`
@@ -117,7 +120,7 @@ func (w *Window) applyTheme() {
 		QLabel#termiteHeader[focused="true"] { background: $focusBg; color: $focusFg; }
 		QLabel#termiteHeader[problem="true"] { color: #dc322f; }
 		QLabel#termiteHeader[zoomed="true"] { font-weight: bold; }
-		QLabel#termiteDropZone { background: $focusTint; border: 2px solid $focusBg; }
+		QLabel#termiteDropZone { background: $focusTint; border: $borderpx solid $focusBg; }
 	`))
 }
 
@@ -158,10 +161,21 @@ func (w *Window) currentPane() *Pane {
 
 func (w *Window) indexOf(t *Tab) int { return w.tabs.IndexOf(t.container) }
 
+// open reports whether the window is still open. NewTab's error box runs a
+// nested event loop, in which the window's last pane can exit and the
+// window close and be deleted.
+func (w *Window) open() bool { return slices.Contains(w.app.windows, w) }
+
 // NewTab opens a tab with one pane.
 func (w *Window) NewTab(cwd string, cmd []string) *Tab {
+	return w.openTab(func(t *Tab) (*Pane, error) { return w.app.NewPane(t, cwd, cmd) })
+}
+
+// openTab opens a tab with the pane start makes for it, or shows why it
+// could not and returns nil.
+func (w *Window) openTab(start func(*Tab) (*Pane, error)) *Tab {
 	t := newTab(w)
-	p, err := w.app.NewPane(t, cwd, cmd)
+	p, err := start(t)
 	if err != nil {
 		t.container.DeleteLater()
 		qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
@@ -186,11 +200,10 @@ func (w *Window) closeTab(t *Tab) {
 
 func (w *Window) addLayoutTab(ln LayoutNode) {
 	leaf := firstLeaf(ln)
-	t := w.NewTab(leaf.Cwd, leaf.Command)
+	t := w.openTab(func(t *Tab) (*Pane, error) { return w.app.layoutPane(t, leaf) })
 	if t == nil {
 		return
 	}
-	t.root.pane.setFontStep(leaf.FontStep)
 	w.app.buildLayout(t, t.root.pane, ln)
 }
 
@@ -205,6 +218,9 @@ func (w *Window) loadLayout(lf *LayoutFile) {
 	for _, ln := range lf.Tabs {
 		n := len(w.list)
 		w.addLayoutTab(ln)
+		if !w.open() {
+			return // closed under a tab's error box, its panes gone
+		}
 		if first < 0 && len(w.list) > n {
 			first = w.indexOf(w.list[n])
 		}

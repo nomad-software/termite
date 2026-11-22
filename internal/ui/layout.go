@@ -421,12 +421,11 @@ func (a *App) buildLayout(t *Tab, p *Pane, ln LayoutNode) {
 	cur := p
 	for _, c := range ln.Children[1:] {
 		leaf := firstLeaf(c) // a nested split starts as its first pane
-		np, err := a.NewPane(t, leaf.Cwd, leaf.Command)
+		np, err := a.layoutPane(t, leaf)
 		if err != nil {
 			panes = append(panes, nil)
 			continue
 		}
-		np.setFontStep(leaf.FontStep)
 		t.Split(cur, orient, np)
 		panes = append(panes, np)
 		cur = np
@@ -447,6 +446,28 @@ func (a *App) buildLayout(t *Tab, p *Pane, ln LayoutNode) {
 	if level != nil && len(ln.Sizes) == len(level.children) {
 		level.split.SetSizes(ln.Sizes)
 	}
+}
+
+// layoutPane starts the pane leaf describes. When its command (or folder)
+// fails, the default shell is started there instead and the pane says why:
+// a nested split starts as its first pane, and without it the whole split
+// would be left out.
+func (a *App) layoutPane(t *Tab, leaf LayoutNode) (*Pane, error) {
+	np, err := a.NewPane(t, leaf.Cwd, leaf.Command)
+	if err != nil {
+		var err2 error
+		if np, err2 = a.NewPane(t, leaf.Cwd, a.defaultCmd); err2 != nil {
+			np, err2 = a.NewPane(t, "", a.defaultCmd)
+		}
+		if err2 != nil {
+			return nil, err
+		}
+		np.T.Mu.Lock()
+		np.T.Write([]byte("termite: " + err.Error() + "\r\n"))
+		np.T.Mu.Unlock()
+	}
+	np.setFontStep(leaf.FontStep)
+	return np, nil
 }
 
 // firstLeaf returns the first pane description of a layout subtree.

@@ -117,7 +117,7 @@ option with its default (to the `--config` path when one is given), and
 never overwrites an existing file (a dangling symlink is followed, creating
 the file it names). Settings saved from the Options dialog
 keep a symlinked config file a symlink, writing to the file it points at. Problems (misspelt keys, bad values, values
-of the wrong type, unknown key names, two actions on one shortcut, syntax
+of the wrong type, unknown keybinding actions, two actions on one shortcut, syntax
 errors with their line) are shown in red in every pane's header, from
 start-up, until the file is fixed; whatever is valid still applies (a file
 that isn't JSON at all falls back to the defaults, an empty one loads them
@@ -197,8 +197,8 @@ Moving focus with Alt+Arrows goes to the adjacent pane on that side that
 lines up with the text cursor, as in tmux and vim, never to a pane that
 only touches at a corner.
 
-Every pane has a header showing its current directory, from the shell's
-OSC 7 report or the foreground process. Each tab is named after its
+Every pane has a header showing its current directory: the foreground
+process's, or the shell's last OSC 7 report when that can't be read. Each tab is named after its
 focused pane's header, and the window title is the last part of the current
 tab's focused pane's directory (`share` for `/usr/share`). Titles set by
 programs are ignored. A new pane made by splitting takes the keyboard focus.
@@ -237,8 +237,9 @@ the next newer one, and Esc closes the search bar.
 
 Layouts are saved as JSON under `~/.config/termite/layouts/`, recording the
 split tree, sizes, each pane's working directory, command and text size for every tab.
-Loading a layout replaces the window's tabs with its own. Layouts can be
-removed from the Layouts menu.
+Loading a layout replaces the window's tabs with its own. A pane whose
+command can no longer be started opens your shell instead and says why.
+Layouts can be removed from the Layouts menu.
 
 ## AppImage
 

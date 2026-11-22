@@ -103,17 +103,19 @@ func TestCloseWhileQuerying(t *testing.T) {
 	}
 }
 
-// TestChildEnvironment checks what a shell inherits: termite's TERM, and
-// none of the variables the AppImage runtime sets for termite itself.
+// TestChildEnvironment checks what a shell inherits: termite's TERM,
+// TERM_PROGRAM and version, and none of the variables the AppImage runtime
+// sets for termite itself.
 func TestChildEnvironment(t *testing.T) {
 	t.Setenv("APPIMAGE", "/x/Termite.AppImage")
 	t.Setenv("APPDIR", "/tmp/.mount_x")
+	t.Setenv("ARGV0", "Termite.AppImage")
 	t.Setenv("OWD", "/home/me")
 	t.Setenv("TERM", "dumb")
 	t.Setenv("DESKTOP_STARTUP_ID", "termite-1")
 	t.Setenv("XDG_ACTIVATION_TOKEN", "tok")
 	tm := term.New(80, 5, 100)
-	s, err := Start(tm, Options{Command: []string{"sh", "-c", `echo "[$TERM|${APPIMAGE-}|${APPDIR-}|${OWD-}|${DESKTOP_STARTUP_ID-}${XDG_ACTIVATION_TOKEN-}]"`}, Cols: 80, Rows: 5})
+	s, err := Start(tm, Options{Command: []string{"sh", "-c", `echo "[$TERM|$TERM_PROGRAM $TERM_PROGRAM_VERSION|${APPIMAGE-}|${APPDIR-}|${ARGV0-}|${OWD-}|${DESKTOP_STARTUP_ID-}${XDG_ACTIVATION_TOKEN-}]"`}, Cols: 80, Rows: 5})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +131,7 @@ func TestChildEnvironment(t *testing.T) {
 	defer tm.Mu.Unlock()
 	b := tm.Buf()
 	top := b.ScreenTopAbs()
-	if got := b.TextRange(term.Pos{Line: top}, term.Pos{Line: top, Col: 80}, false); got != "[xterm-256color||||]" {
+	if got := b.TextRange(term.Pos{Line: top}, term.Pos{Line: top, Col: 80}, false); got != "[xterm-256color|termite "+term.Version()+"|||||]" {
 		t.Fatalf("child saw %q", got)
 	}
 }

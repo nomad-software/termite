@@ -9,9 +9,10 @@ package term
 //
 // Reflow runs twice: a first pass only measures the result (how many
 // lines, where the cursor and the last content land), then a second pass
-// writes the lines that are kept straight into the new ring. Nothing else
-// is allocated, which matters because a window being resized reflows every
-// pane on each step.
+// writes the lines that are kept straight into the new ring. Besides it,
+// each pass allocates only a scratch slice, reused for every paragraph's
+// cells, which matters because a window being resized reflows every pane
+// on each step.
 func (b *Buffer) Resize(cols, rows int, reflow bool, cx, cy int, pending bool) (*Buffer, int, int, bool) {
 	if cols < 1 {
 		cols = 1

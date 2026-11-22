@@ -23,10 +23,10 @@ const DisplayName = "Termite"
 // AppImage it is in, if it is in one, and otherwise the program itself. Inside
 // an AppImage the program is in a folder that is only there while it runs, so
 // the AppImage, which its runtime names in $APPIMAGE, is what starts it again.
+// $APPIMAGE is taken only when the program is inside $APPDIR, the folder of
+// that AppImage: an AppImage of another program that starts termite (an
+// editor opening a terminal) passes on its own.
 func Executable() (string, error) {
-	if image := os.Getenv("APPIMAGE"); image != "" {
-		return image, nil
-	}
 	path, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -34,7 +34,19 @@ func Executable() (string, error) {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		path = resolved
 	}
+	if image, dir := os.Getenv("APPIMAGE"), os.Getenv("APPDIR"); image != "" && dir != "" && within(path, dir) {
+		return image, nil
+	}
 	return path, nil
+}
+
+// within reports whether path is inside the folder dir, links followed.
+func within(path, dir string) bool {
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../") && !filepath.IsAbs(rel)
 }
 
 // Dir returns the user's data folder, $XDG_DATA_HOME or ~/.local/share

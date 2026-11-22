@@ -8,6 +8,9 @@ cd "$(dirname "$0")/.."
 make build >/dev/null
 
 tmp=$(mktemp -d)
+# Set before the trap: under set -u an unset one would stop it before the
+# folder is removed, when Xvfb or termite fails to start.
+termite='' xvfb=''
 trap 'kill $termite $xvfb 2>/dev/null; rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/config/termite/layouts"
 width=1180 height=700

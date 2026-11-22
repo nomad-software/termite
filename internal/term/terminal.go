@@ -90,6 +90,13 @@ type Terminal struct {
 	cur       cursor
 	savedMain cursor
 	savedAlt  cursor
+	// mainAt is where the cursor was on the primary screen when the
+	// alternate one was shown: what reflows the primary meanwhile. Not
+	// savedMain, which only ?1049 sets to it (?47 and ?1047 save nothing).
+	mainAt struct {
+		X, Y        int
+		wrapPending bool
+	}
 	top, bot  int // scroll region, inclusive
 	tabs      []bool
 	ulColor   Color
@@ -270,11 +277,13 @@ func (t *Terminal) Resize(cols, rows int) {
 		return
 	}
 	// Reflow the primary buffer, tracking the cursor that belongs to it.
-	pc := &t.cur
+	px, py, ppend := t.cur.X, t.cur.Y, t.cur.wrapPending
 	if t.altActive {
-		pc = &t.savedMain
+		px, py, ppend = t.mainAt.X, t.mainAt.Y, t.mainAt.wrapPending
 	}
-	np, ncx, ncy, npend := t.primary.Resize(cols, rows, true, pc.X, pc.Y, pc.wrapPending)
+	// ?1049 saved that cursor, to restore on leaving: it moves with it.
+	savedTracks := t.altActive && t.savedMain.X == px && t.savedMain.Y == py && t.savedMain.wrapPending == ppend
+	np, ncx, ncy, npend := t.primary.Resize(cols, rows, true, px, py, ppend)
 	// The alternate screen keeps the row of its own cursor on screen; while
 	// it is inactive it has none, and its top rows are kept.
 	acx, acy, apend := 0, 0, false
@@ -286,7 +295,10 @@ func (t *Terminal) Resize(cols, rows int) {
 	if t.altActive {
 		t.buf = na
 		t.cur.X, t.cur.Y, t.cur.wrapPending = acx, acy, apend
-		t.savedMain.X, t.savedMain.Y, t.savedMain.wrapPending = ncx, ncy, npend
+		t.mainAt.X, t.mainAt.Y, t.mainAt.wrapPending = ncx, ncy, npend
+		if savedTracks {
+			t.savedMain.X, t.savedMain.Y, t.savedMain.wrapPending = ncx, ncy, npend
+		}
 	} else {
 		t.buf = np
 		t.cur.X, t.cur.Y, t.cur.wrapPending = ncx, ncy, npend
@@ -389,8 +401,11 @@ func (t *Terminal) printRune(r rune) {
 	// Zero-width characters (combining marks, ZWJ, variation selectors)
 	// and the second regional indicator of a flag attach to the previous
 	// cell. Widths otherwise follow wcwidth so applications stay aligned.
-	if lp.ok && (w == 0 || (isRegional(r) && lp.ri)) {
-		joinRI := isRegional(r) && lp.ri
+	// A flag joins only where it can take its second cell: in the last
+	// column it would stay one cell where wcwidth counts two, and the
+	// program's next text would land a column left of where it expects.
+	joinRI := lp.ok && isRegional(r) && lp.ri && t.canWidenLast()
+	if lp.ok && (w == 0 || joinRI) {
 		t.appendToCell(lp.x, lp.y, r)
 		lp.ri = false
 		if joinRI {
@@ -485,17 +500,19 @@ func (t *Terminal) appendToCell(x, y int, r rune) {
 // widenLast turns the last printed (narrow) cell into a wide one, used for
 // regional indicator flags: each indicator is one column wide, so the pair
 // occupies two columns, matching wcwidth-based applications.
+// canWidenLast reports whether the cell printed last can become two wide:
+// it is narrow, and the cursor right after it, not waiting to wrap.
+func (t *Terminal) canWidenLast() bool {
+	lp := &t.lastPrint
+	return lp.x+1 < t.cols && !t.cur.wrapPending && t.buf.Line(lp.y)[lp.x].Attr&AttrWide == 0
+}
+
+// widenLast makes the cell printed last two wide (a flag's), moving the
+// cursor past its second cell. canWidenLast must hold.
 func (t *Terminal) widenLast() {
 	lp := &t.lastPrint
 	line := t.buf.Line(lp.y)
 	c := &line[lp.x]
-	if c.Attr&AttrWide != 0 || lp.x+1 >= t.cols {
-		return
-	}
-	// The cursor is right after the first indicator; it advances one more.
-	if t.cur.wrapPending {
-		return
-	}
 	c.Attr |= AttrWide
 	t.clearWideAt(line, lp.x+1)
 	line[lp.x+1] = Cell{Fg: c.Fg, Bg: c.Bg, Attr: c.Attr&AttrStyleMask | AttrWideCont, Extra: c.Extra}
@@ -779,6 +796,7 @@ func (t *Terminal) switchScreen(alt, clearAlt bool) {
 	}
 	t.altActive = alt
 	if alt {
+		t.mainAt.X, t.mainAt.Y, t.mainAt.wrapPending = t.cur.X, t.cur.Y, t.cur.wrapPending
 		t.buf = t.alt
 		if clearAlt {
 			for y := 0; y < t.rows; y++ {
@@ -1099,6 +1117,8 @@ func (t *Terminal) csiInter(inter, final byte) {
 			t.CursorStyle, t.programCursor = CursorUnderline, true
 		case 5, 6:
 			t.CursorStyle, t.programCursor = CursorBeam, true
+		default:
+			return // as xterm, which ignores the rest, blinking too
 		}
 		t.CursorBlink = n%2 == 1
 		t.events |= EvCursorStyle
@@ -1438,18 +1458,29 @@ func parseExtColor(ps *Params, k int, subs []int32) (Color, int, bool) {
 		}
 		return 0
 	}
+	// A value past 255 makes the colour invalid, ignored as xterm does,
+	// rather than wrapped round (300 is not 44).
+	byteOf := func(a []int32, i int, ok *bool) uint8 {
+		v := get(a, i)
+		if v > 255 {
+			*ok = false
+		}
+		return uint8(v)
+	}
 	if len(subs) > 0 {
 		switch subs[0] {
 		case 5:
 			if len(subs) >= 2 {
-				return Indexed(uint8(get(subs, 1))), 0, true
+				ok := true
+				return Indexed(byteOf(subs, 1, &ok)), 0, ok
 			}
 		case 2:
+			ok := true
 			if len(subs) >= 5 { // 38:2:cs:r:g:b
-				return RGB(uint8(get(subs, 2)), uint8(get(subs, 3)), uint8(get(subs, 4))), 0, true
+				return RGB(byteOf(subs, 2, &ok), byteOf(subs, 3, &ok), byteOf(subs, 4, &ok)), 0, ok
 			}
 			if len(subs) == 4 { // 38:2:r:g:b
-				return RGB(uint8(get(subs, 1)), uint8(get(subs, 2)), uint8(get(subs, 3))), 0, true
+				return RGB(byteOf(subs, 1, &ok), byteOf(subs, 2, &ok), byteOf(subs, 3, &ok)), 0, ok
 			}
 		}
 		return 0, 0, false
@@ -1461,12 +1492,16 @@ func parseExtColor(ps *Params, k int, subs []int32) (Color, int, bool) {
 	switch rest[0] {
 	case 5:
 		if len(rest) >= 2 {
-			return Indexed(uint8(get(rest, 1))), k + 3, true
+			ok := true
+			return Indexed(byteOf(rest, 1, &ok)), k + 3, ok
 		}
 	case 2:
 		if len(rest) >= 4 {
-			return RGB(uint8(get(rest, 1)), uint8(get(rest, 2)), uint8(get(rest, 3))), k + 5, true
+			ok := true
+			return RGB(byteOf(rest, 1, &ok), byteOf(rest, 2, &ok), byteOf(rest, 3, &ok)), k + 5, ok
 		}
+	default:
+		return 0, k + 2, false // an unknown kind: only it is skipped (38;9;1 is still bold)
 	}
 	return 0, ps.N, false
 }

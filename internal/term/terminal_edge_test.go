@@ -427,3 +427,61 @@ func TestVersion(t *testing.T) {
 		t.Errorf("XTVERSION replied %q", got)
 	}
 }
+
+// TestResizeUnderAltKeepsPrimary checks that resizing while ?47 or ?1047
+// shows the alternate screen reflows the primary around its own cursor:
+// they save none, and the stale saved one (the top) once dropped the
+// lines below it. ?1049's saved cursor follows the reflow.
+func TestResizeUnderAltKeepsPrimary(t *testing.T) {
+	for _, mode := range []string{"47", "1047", "1049"} {
+		tm := feed(New(10, 6, 20), "1\r\n2\r\n3\r\n4\r\n5\r\n6")
+		feed(tm, "\x1b[?"+mode+"h")
+		tm.Resize(10, 3)
+		feed(tm, "\x1b[?"+mode+"l")
+		if got := screen(tm); got != "4\n5\n6" {
+			t.Errorf("?%s: primary shows %q after the resize, want 4..6", mode, got)
+		}
+		if mode == "1049" {
+			expectCursor(t, tm, 1, 2)
+		}
+	}
+}
+
+// TestFlagInLastColumn checks that a flag begun in the last column is not
+// joined into one narrow cell: wcwidth counts its indicators two columns,
+// so the text after it must land where a program expects.
+func TestFlagInLastColumn(t *testing.T) {
+	tm := feed(New(5, 3, 0), "abcd🇬🇧X")
+	expectCursor(t, tm, 2, 1)
+	tm = feed(New(5, 3, 0), "ab🇬🇧X") // mid-line, it is joined, two wide
+	expectCursor(t, tm, 5-1, 0)
+	if c := tm.buf.Line(tm.buf.Count() - 3)[2]; c.Attr&AttrWide == 0 {
+		t.Error("a flag mid-line is not one wide cell")
+	}
+}
+
+// TestCursorStyleIgnoresUnknown checks that DECSCUSR past 6 changes
+// nothing, blinking neither.
+func TestCursorStyleIgnoresUnknown(t *testing.T) {
+	tm := feed(New(10, 3, 0), "\x1b[2 q\x1b[7 q")
+	if tm.CursorStyle != CursorBlock || tm.CursorBlink {
+		t.Errorf("style %v blink %v, want a steady block", tm.CursorStyle, tm.CursorBlink)
+	}
+}
+
+// TestSGRColorOutOfRange checks that a colour value past 255 is ignored,
+// not wrapped round, and that the parameters after it, or after a colour
+// of an unknown kind, still apply.
+func TestSGRColorOutOfRange(t *testing.T) {
+	for _, seq := range []string{
+		"\x1b[38;5;300;1m", "\x1b[38;2;256;1;1;1m", "\x1b[38:5:300;1m", "\x1b[38:2::1:999:1;1m", "\x1b[38;9;1m",
+	} {
+		tm := feed(New(10, 3, 0), seq)
+		if tm.cur.pen.Fg != 0 {
+			t.Errorf("%q: foreground %v, want the default", seq, tm.cur.pen.Fg)
+		}
+		if tm.cur.pen.Attr&AttrBold == 0 {
+			t.Errorf("%q: the bold after it was lost", seq)
+		}
+	}
+}

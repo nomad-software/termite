@@ -113,9 +113,9 @@ func TestInSelection(t *testing.T) {
 // colour (inverse, or mixed with it, dim) only spans cells of one
 // background, while plain text keeps it across backgrounds.
 func TestLigatureBackgrounds(t *testing.T) {
-	c := &GlyphCache{m: map[glyphKey]Sprite{}, textIndex: map[string]rune{}}
+	c := &GlyphCache{m: map[glyphKey]sprite{}, textIndex: map[string]rune{}}
 	key := glyphKey{ch: c.textID("->"), kind: kindText, cells: 2}
-	c.m[key] = Sprite{W: 1, H: 1} // cached, so nothing is rasterized
+	c.m[key] = sprite{W: 1, H: 1} // cached, so nothing is rasterized
 	r := &Renderer{Cache: c}
 	for _, tc := range []struct {
 		attr term.Attr

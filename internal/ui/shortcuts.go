@@ -3,6 +3,7 @@ package ui
 import (
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/nomad-software/qute/qtgui"
@@ -144,7 +145,8 @@ func chordText(s, super string) string {
 	if n, ok := chordKeyToQt[k]; ok {
 		k = n
 	} else {
-		k = strings.ToUpper(k[:1]) + k[1:]
+		r, size := utf8.DecodeRuneInString(k) // é is two bytes
+		k = string(unicode.ToUpper(r)) + k[size:]
 	}
 	return strings.Join(append(parts, k), "+")
 }

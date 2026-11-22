@@ -155,14 +155,22 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 	rebuildList := func(selectID string) {
 		loading = true
 		list.Clear()
-		sel := 0
+		// An unknown id (a misspelt theme) selects the theme termite uses
+		// for it, the default, not whichever sorts first.
+		sel, def := -1, 0
 		for i, id := range ids {
 			list.AddItemText(specs[id].Name)
 			item := list.Item(i)
 			item.SetFlags(item.Flags() | qtcore.ItemIsEditable)
-			if id == selectID {
+			switch id {
+			case selectID:
 				sel = i
+			case config.DefaultTheme:
+				def = i
 			}
+		}
+		if sel < 0 {
+			sel = def
 		}
 		loading = false
 		list.SetCurrentRow(sel)
@@ -298,25 +306,7 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 	// user's own are stored under ids made from their current names, so a
 	// renamed copy doesn't keep the id of the theme it was copied from.
 	read = func() (map[string]config.ThemeSpec, string) {
-		edited := config.CloneThemes(specs)
-		out := map[string]config.ThemeSpec{}
-		newID := map[string]string{}
-		for _, id := range ids {
-			s := edited[id]
-			if strings.TrimSpace(s.Name) == "" {
-				s.Name = id
-			}
-			edited[id] = s
-			if _, builtin := config.BuiltinThemes[id]; builtin {
-				out[id], newID[id] = s, id
-			}
-		}
-		for _, id := range ids {
-			if _, builtin := config.BuiltinThemes[id]; !builtin {
-				nid := config.NewThemeID(out, edited[id].Name)
-				out[nid], newID[id] = edited[id], nid
-			}
-		}
+		out, newID := themeIDs(ids, config.CloneThemes(specs))
 		sel := config.DefaultTheme
 		if current >= 0 && current < len(ids) {
 			sel = newID[ids[current]]
@@ -324,4 +314,33 @@ func (a *App) themesTab(dlg *qtwidgets.QDialog) (page *qtwidgets.QWidget, read f
 		return out, sel
 	}
 	return page, read
+}
+
+// themeIDs returns the themes listed in ids (in edited), each under the id
+// it is saved by, and the id each listed one gets. Built-in themes keep
+// theirs; the user's own get ids made from their names, never a built-in's
+// (one removed too), as that would count as built-in and Restore Built-in
+// Themes would overwrite it.
+func themeIDs(ids []string, edited map[string]config.ThemeSpec) (map[string]config.ThemeSpec, map[string]string) {
+	out := map[string]config.ThemeSpec{}
+	newID := map[string]string{}
+	taken := map[string]config.ThemeSpec{}
+	maps.Copy(taken, config.BuiltinThemes)
+	for _, id := range ids {
+		s := edited[id]
+		if strings.TrimSpace(s.Name) == "" {
+			s.Name = id
+		}
+		edited[id] = s
+		if _, builtin := config.BuiltinThemes[id]; builtin {
+			out[id], newID[id] = s, id
+		}
+	}
+	for _, id := range ids {
+		if _, builtin := config.BuiltinThemes[id]; !builtin {
+			nid := config.NewThemeID(taken, edited[id].Name)
+			out[nid], newID[id], taken[nid] = edited[id], nid, edited[id]
+		}
+	}
+	return out, newID
 }

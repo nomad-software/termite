@@ -258,32 +258,28 @@ func (s *Session) Pid() int {
 // process group's leader, or the child's when there is none or the leader
 // has exited while its group runs on (cat in "cat big | less").
 func (s *Session) ForegroundCwd() string {
-	if !s.closed.Load() {
-		if pgid := s.foregroundPgid(); pgid > 0 {
-			if dir, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", pgid)); err == nil {
-				return dir
-			}
-		}
-	}
-	pid := s.Pid()
-	if pid == 0 {
-		return ""
-	}
-	dir, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid))
-	if err != nil {
-		return ""
-	}
-	return dir
+	return s.foregroundProc(func(pid int32) (string, error) {
+		return os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid))
+	})
 }
 
 // ForegroundName returns the command name of the PTY's foreground process
 // group's leader, or the child's when there is none or the leader has
 // exited (as ForegroundCwd).
 func (s *Session) ForegroundName() string {
+	return s.foregroundProc(func(pid int32) (string, error) {
+		b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
+		return strings.TrimSpace(string(b)), err
+	})
+}
+
+// foregroundProc returns what read gives for the foreground process group's
+// leader, or for the child when there is none or it cannot be read.
+func (s *Session) foregroundProc(read func(pid int32) (string, error)) string {
 	if !s.closed.Load() {
 		if pgid := s.foregroundPgid(); pgid > 0 {
-			if b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pgid)); err == nil {
-				return strings.TrimSpace(string(b))
+			if v, err := read(pgid); err == nil {
+				return v
 			}
 		}
 	}
@@ -291,11 +287,11 @@ func (s *Session) ForegroundName() string {
 	if pid == 0 {
 		return ""
 	}
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
+	v, err := read(int32(pid))
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(b))
+	return v
 }
 
 func (s *Session) foregroundPgid() int32 {

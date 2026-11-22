@@ -97,8 +97,8 @@ type rasterized struct {
 	color      bool
 }
 
-// Rasterize draws text spanning cells columns with the given style.
-func (fs *FontSet) Rasterize(text string, style int, cells int) rasterized {
+// rasterize draws text spanning cells columns with the given style.
+func (fs *FontSet) rasterize(text string, style int, cells int) rasterized {
 	cells = min(max(cells, 1), 4)
 	img := fs.img
 	img.Fill(0)

@@ -470,7 +470,7 @@ func TestLoadUnknownKeysAndBadBindings(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	data := `{"font_size": "big", "cursor_style": "bar", "fontsize": 3, "FONT_FAMILY": "Mono",
 		"themes": {"mine": {"name": "Mine", "foregroud": "#ffffff", "background": "#000000", "cursor": "#ffffff"}},
-		"keybindings": {"copy": 5, "paste": "ctrl+alt+v", "bogus_action": 1}}`
+		"keybindings": {"copy": 5, "paste": "ctrl+alt+v", "bogus_action": 1, "cpoy": null}}`
 	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +479,7 @@ func TestLoadUnknownKeysAndBadBindings(t *testing.T) {
 		t.Fatal("no error")
 	}
 	msg := err.Error()
-	for _, want := range []string{"font_size", "cursor_style", `"fontsize"`, `"themes.mine.foregroud"`} {
+	for _, want := range []string{"font_size", "cursor_style", `"fontsize"`, `"themes.mine.foregroud"`, `"bogus_action"`, `"cpoy"`} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("error %q does not mention %s", msg, want)
 		}

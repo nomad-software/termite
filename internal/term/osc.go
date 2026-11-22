@@ -85,8 +85,9 @@ func formatColor(c uint32) string {
 }
 
 // ParseColor parses an X11 colour spec: rgb:r/g/b with 1 to 4 hex digits
-// each, or #rgb, #rrggbb, #rrrgggbbb or #rrrrggggbbbb (the high digits
-// of each count).
+// each, or #rrggbb, #rrrgggbbb or #rrrrggggbbbb (the high digits of each
+// count). #rgb doubles each digit, as CSS does (#fff is white), not as X11
+// does (#f0f0f0): themes in the config file are written in it.
 func ParseColor(s string) (uint32, bool) {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "rgb:") {

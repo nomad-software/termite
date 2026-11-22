@@ -9,7 +9,7 @@ import (
 
 func TestProceduralCoverage(t *testing.T) {
 	for r := rune(0x2500); r <= 0x259f; r++ {
-		a, ok := DrawProcedural(r, 9, 18)
+		a, ok := drawProcedural(r, 9, 18)
 		if !ok {
 			t.Fatalf("%U not drawn", r)
 		}
@@ -29,7 +29,7 @@ func TestProceduralCoverage(t *testing.T) {
 func TestBoxJoins(t *testing.T) {
 	w, h := 9, 18
 	rowsAt := func(r rune, x int) []int {
-		a, _ := DrawProcedural(r, w, h)
+		a, _ := drawProcedural(r, w, h)
 		var ys []int
 		for y := 0; y < h; y++ {
 			if a[y*w+x] > 128 {
@@ -39,7 +39,7 @@ func TestBoxJoins(t *testing.T) {
 		return ys
 	}
 	colsAt := func(r rune, y int) []int {
-		a, _ := DrawProcedural(r, w, h)
+		a, _ := drawProcedural(r, w, h)
 		var xs []int
 		for x := 0; x < w; x++ {
 			if a[y*w+x] > 128 {
@@ -72,7 +72,7 @@ func TestDumpBox(t *testing.T) {
 	chars := "┼╔╬╭╡▒▚⣿"
 	var lines [18]strings.Builder
 	for _, r := range chars {
-		a, _ := DrawProcedural(r, w, h)
+		a, _ := drawProcedural(r, w, h)
 		for y := 0; y < h; y++ {
 			for x := 0; x < w; x++ {
 				v := a[y*w+x]
@@ -91,5 +91,31 @@ func TestDumpBox(t *testing.T) {
 	}
 	for _, l := range lines {
 		fmt.Println(l.String())
+	}
+}
+
+// TestBlockHalves checks that the half blocks split the cell where the
+// quadrants do, at odd sizes too: ▌ is ▖ and ▘, ▐ is ▗ and ▝, ▀ is ▘
+// and ▝, ▄ is ▖ and ▗, so a column of them lines up.
+func TestBlockHalves(t *testing.T) {
+	for _, size := range [][2]int{{9, 19}, {8, 18}, {7, 15}} {
+		w, h := size[0], size[1]
+		union := func(a, b rune) []byte {
+			pa, _ := drawProcedural(a, w, h)
+			pb, _ := drawProcedural(b, w, h)
+			out := make([]byte, len(pa))
+			for i := range pa {
+				out[i] = max(pa[i], pb[i])
+			}
+			return out
+		}
+		for half, quads := range map[rune][2]rune{
+			'▌': {'▖', '▘'}, '▐': {'▗', '▝'}, '▀': {'▘', '▝'}, '▄': {'▖', '▗'},
+		} {
+			got, _ := drawProcedural(half, w, h)
+			if want := union(quads[0], quads[1]); string(got) != string(want) {
+				t.Errorf("%c at %dx%d is not %c with %c", half, w, h, quads[0], quads[1])
+			}
+		}
 	}
 }

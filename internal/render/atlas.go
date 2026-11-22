@@ -8,8 +8,8 @@ type Atlas struct {
 	x, y, rowH int
 }
 
-// NewAtlas creates an empty atlas of the given size.
-func NewAtlas(w, h int) *Atlas { return &Atlas{W: w, H: h, x: 1, y: 1} }
+// newAtlas creates an empty atlas of the given size.
+func newAtlas(w, h int) *Atlas { return &Atlas{W: w, H: h, x: 1, y: 1} }
 
 // Alloc reserves a w×h region (with a 1px gutter) and returns its origin,
 // or ok=false when the atlas is full.

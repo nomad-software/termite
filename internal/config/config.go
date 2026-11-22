@@ -215,7 +215,8 @@ func Load(path string) (*Config, error) {
 
 // restoreBadBindings gives back its default binding to each action whose
 // value in the file is not a string (null too, which the decoder takes
-// without complaint): the decoder leaves it "", which would unbind it.
+// without complaint): the decoder leaves it "", which would unbind it. An
+// unknown action is left in kb, unbound, for Validate to report.
 func restoreBadBindings(data []byte, kb map[string]string) {
 	var raw struct {
 		Keybindings map[string]json.RawMessage `json:"keybindings"`
@@ -231,7 +232,9 @@ func restoreBadBindings(data []byte, kb map[string]string) {
 		if def, ok := DefaultKeybindings[action]; ok {
 			kb[action] = def
 		} else {
-			delete(kb, action)
+			// Kept, so that Validate reports the unknown action (null
+			// would otherwise hide a misspelling).
+			kb[action] = ""
 		}
 	}
 }

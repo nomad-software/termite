@@ -73,5 +73,14 @@ func computeWidth(r rune) int {
 	return w
 }
 
-// StringWidth returns the display width of s in cells, grapheme-aware.
-func StringWidth(s string) int { return uniseg.StringWidth(s) }
+// StringWidth returns the number of cells s takes when it is written to the
+// terminal: the sum of its runes' widths, zero-width ones joining the one
+// before. ZWJ and skin-tone sequences are not joined (see RuneWidth), so
+// this is not uniseg's grapheme-aware width.
+func StringWidth(s string) int {
+	n := 0
+	for _, r := range s {
+		n += RuneWidth(r)
+	}
+	return n
+}

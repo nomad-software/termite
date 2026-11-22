@@ -51,7 +51,7 @@ and architecture.
 - Version (`term.Version`, reported by `--version`, XTVERSION and
   `$TERM_PROGRAM_VERSION`): the tag the build's commit is or follows,
   without its `v`, set by `-ldflags -X termite/internal/term.version=` from
-  `git describe --tags --abbrev=0` in the Makefile and
+  `git describe --tags --abbrev=0 --match 'v[0-9]*'` in the Makefile and
   `packaging/appimage.sh` (the workflow checks out with `fetch-depth: 0`
   so the tags are there), or `dev` where there is none. Not what Go
   records, which ignores tags from v2 on as the module path has no `/v2`.
@@ -146,7 +146,15 @@ and architecture.
 - `internal/config` JSON config, `SetValues` writes, themes (`themes` in the
   file replaces the built-ins), key chords. The file is read at start-up
   only (and on `reload_config` or Options → OK/Apply); it is deliberately
-  not watched.
+  not watched. Options writes a font family or header size only once it is
+  chosen there: a combo box shows this machine's stand-in for a family
+  that is not installed, which OK would otherwise save. The user's own
+  themes never take a built-in's id (`themeIDs`), or Restore Built-in
+  Themes would overwrite them.
+- A saved layout's pane whose command fails starts the default shell
+  instead, saying why in the pane (`App.layoutPane`, a tab's first pane
+  too): a tab or nested split starts as its first pane, and would
+  otherwise be left out whole.
 
 ## Rules learnt the hard way
 - All Qt/GL calls on the main thread; PTY reader goroutines only lock the
@@ -169,6 +177,12 @@ and architecture.
 - Reflow changes need the fuzzer (`make fuzz`) and tests with small
   scrollback, where the ring overflows.
 - Character widths follow glibc `wcwidth`; don't join ZWJ/skin-tone emoji.
+  `term.StringWidth` counts as the terminal places text (the IME preedit is
+  measured with it), not uniseg's grapheme widths. A flag's second
+  indicator joins only where the cell can widen (not in the last column).
+- While the alternate screen is up, the primary reflows around
+  `Terminal.mainAt` (its cursor when the alternate was shown), never
+  `savedMain`, which only ?1049 sets.
 - `AttrWrapPad` marks the blank left when a wide char wraps; reflow, copy and
   search must skip it.
 - Stylesheets target termite's own widgets by object name only, so menus and
@@ -184,6 +198,9 @@ and architecture.
   `XDG_ACTIVATION_TOKEN` (Qt unsets those in C, which Go's copy of the
   environment never sees; all stripped in `pty.Start`), and `packaging/AppRun` must not
   add anything to the environment: everything in it reaches the shells.
+  The desktop entry trusts `$APPIMAGE` only when termite runs inside
+  `$APPDIR` (`desktop.Executable`): another app's AppImage that starts
+  termite passes its own on.
 - `Session.Write` never blocks: the UI thread and the reader call it, and a
   child that stops reading (raw mode) once filled a bounded channel and
   froze every window. Input waits in a queue capped at `maxQueued`; beyond

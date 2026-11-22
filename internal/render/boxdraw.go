@@ -38,8 +38,8 @@ var boxDashes = map[rune]int{
 	0x254c: 2, 0x254d: 2, 0x254e: 2, 0x254f: 2,
 }
 
-// IsProcedural reports whether r is drawn by DrawProcedural.
-func IsProcedural(r rune) bool {
+// isProcedural reports whether r is drawn by drawProcedural.
+func isProcedural(r rune) bool {
 	switch {
 	case r >= 0x2500 && r <= 0x259f:
 		return true
@@ -119,9 +119,9 @@ func (bm boxMetrics) thick(weight uint8) int {
 	return 0
 }
 
-// DrawProcedural rasterizes r into a w×h alpha mask.
-func DrawProcedural(r rune, w, h int) ([]byte, bool) {
-	if !IsProcedural(r) {
+// drawProcedural rasterizes r into a w×h alpha mask.
+func drawProcedural(r rune, w, h int) ([]byte, bool) {
+	if !isProcedural(r) {
 		return nil, false
 	}
 	m := newMask(w, h)
@@ -340,6 +340,8 @@ func drawBlock(m *mask, r rune) {
 		m.rect(0, 0, w, hh, 255)
 	case r >= 0x2581 && r <= 0x2588:
 		m.rect(0, h-eighthY(int(r-0x2580)), w, h, 255)
+	case r == 0x258c: // ▌ splits where ▐ and the quadrants do
+		m.rect(0, 0, hw, h, 255)
 	case r >= 0x2589 && r <= 0x258f:
 		m.rect(0, 0, eighthX(int(0x2590-r)), h, 255)
 	case r == 0x2590:

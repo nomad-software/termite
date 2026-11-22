@@ -97,7 +97,11 @@ func (a *App) showOptions(p *Pane) {
 		monoWarn.SetVisible(!isMonospaced(font.CurrentFont()))
 	}
 	checkMono()
-	font.OnCurrentFontChanged(func(*qtgui.QFont) { checkMono() })
+	// The combo boxes show the font that stands in for a family that is
+	// not installed: what they show is saved only once it is chosen, or
+	// OK would replace the config's family with this machine's stand-in.
+	fontChosen := false
+	font.OnCurrentFontChanged(func(*qtgui.QFont) { fontChosen = true; checkMono() })
 
 	// The pane headers' font: the terminal's, a little smaller, unless set.
 	hdrFamily, hdrPoints := cfg.HeaderFont()
@@ -110,6 +114,11 @@ func (a *App) showOptions(p *Pane) {
 	hdrSize.SetSingleStep(0.5)
 	hdrSize.SetSuffix(" pt")
 	hdrSize.SetValue(hdrPoints)
+	// As for the terminal's font; and a size not chosen stays unset, so
+	// that it follows font_size, as a family left unset follows its font.
+	hdrFontChosen, hdrSizeChosen := false, false
+	hdrFont.OnCurrentFontChanged(func(*qtgui.QFont) { hdrFontChosen = true })
+	hdrSize.OnValueChanged(func(float64) { hdrSizeChosen = true })
 	hdrRow := qtwidgets.NewQHBoxLayout(nil)
 	hdrRow.AddWidgetFull(hdrFont, 1, 0)
 	hdrRow.AddWidget(hdrSize)
@@ -195,11 +204,19 @@ func (a *App) showOptions(p *Pane) {
 				strings.Join(clashes, "\n")+"\n\nChange or clear them, then try again.")
 			return false
 		}
-		family := font.CurrentFont().Family()
+		family := cfg.FontFamily
+		if fontChosen {
+			family = font.CurrentFont().Family()
+		}
 		headerFamily, headerSize := "", 0.0
 		if !hdrSame.IsChecked() {
-			headerFamily = hdrFont.CurrentFont().Family()
-			headerSize = math.Round(hdrSize.Value()*10) / 10
+			headerFamily, headerSize = cfg.HeaderFontFamily, cfg.HeaderFontSize
+			if hdrFontChosen {
+				headerFamily = hdrFont.CurrentFont().Family()
+			}
+			if hdrSizeChosen {
+				headerSize = math.Round(hdrSize.Value()*10) / 10
+			}
 		}
 		values := map[string]any{
 			"header_font_family": headerFamily,

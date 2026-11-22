@@ -78,9 +78,6 @@ func (a *App) reload(c *config.Config, err error) {
 		a.configErr = err.Error()
 		fmt.Fprintln(os.Stderr, "termite:", err)
 	}
-	if c == nil {
-		return
-	}
 	old := a.cfg
 	a.cfg = c
 	a.bindings = c.ParseBindings()
@@ -232,10 +229,16 @@ func (a *App) NewWindow(layout *LayoutFile) *Window {
 	if layout != nil && len(layout.Tabs) > 0 {
 		for _, ln := range layout.Tabs {
 			w.addLayoutTab(ln)
+			if !w.open() {
+				return nil
+			}
 		}
 		w.tabs.SetCurrentIndex(0) // a layout opens on its first tab
 	} else {
 		w.NewTab("", a.defaultCmd)
+	}
+	if !w.open() {
+		return nil
 	}
 	if len(w.list) == 0 {
 		w.w.Close()
@@ -392,7 +395,9 @@ func (a *App) runAction(p *Pane, action string) {
 	case "paste":
 		p.paste(qtgui.QGuiApplicationClipboard().Text())
 	case "new_tab":
-		w.NewTab(p.cwd(), a.defaultCmd)
+		if w.NewTab(p.cwd(), a.defaultCmd) == nil {
+			p.refocus() // after the error box
+		}
 	case "new_window":
 		a.NewWindow(nil)
 	case "close_pane":
@@ -455,6 +460,7 @@ func (a *App) runAction(p *Pane, action string) {
 		names := ListLayouts()
 		if len(names) == 0 {
 			qtwidgets.QMessageBoxInformation(w.w, desktop.DisplayName, "No saved layouts in "+layoutDir())
+			p.refocus()
 			return
 		}
 		name, ok := qtwidgets.QInputDialogGetItemFull(w.w, "Load layout", "Layout:", names, 0, false, 0, 0)
@@ -463,9 +469,13 @@ func (a *App) runAction(p *Pane, action string) {
 			lf, err := LoadLayout(name)
 			if err != nil {
 				qtwidgets.QMessageBoxWarning(w.w, desktop.DisplayName, err.Error())
+				p.refocus()
 				return
 			}
 			w.loadLayout(lf)
+			// Its tabs' error boxes may have run; p has closed if the
+			// layout opened, and refocus then goes to the current pane.
+			p.refocus()
 		}
 	case "context_menu":
 		p.contextMenuAtCursor()
@@ -482,6 +492,7 @@ func (a *App) runAction(p *Pane, action string) {
 		p.T.Reset()
 		p.T.Mu.Unlock()
 		p.viewTop = -1
+		p.view.Matches, p.view.Current = nil, -1 // on lines now gone
 		p.clearSelection()
 		p.updatePointer(false)
 		p.updateBlinkTimer()
@@ -500,6 +511,7 @@ func (a *App) split(p *Pane, orient qtcore.Orientation) {
 	np, err := a.NewPane(p.tab, p.cwd(), a.defaultCmd)
 	if err != nil {
 		qtwidgets.QMessageBoxWarning(p.Widget, desktop.DisplayName, err.Error())
+		p.refocus()
 		return
 	}
 	p.tab.Split(p, orient, np)

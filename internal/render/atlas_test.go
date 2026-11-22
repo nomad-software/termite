@@ -5,7 +5,7 @@ import "testing"
 // TestAtlasAlloc checks the shelf packing: a 1px gutter between regions,
 // a new shelf when a row is full, and refusals when nothing fits.
 func TestAtlasAlloc(t *testing.T) {
-	a := NewAtlas(20, 12)
+	a := newAtlas(20, 12)
 	steps := []struct {
 		w, h, x, y int
 		ok         bool

@@ -563,21 +563,12 @@ func (r *Renderer) buildRow(y int) {
 		preEnd = min(cols, r.curX+term.StringWidth(r.view.Preedit))
 		cursorHere = false
 	}
-	addGlyph := func(s Sprite, x, py int, color uint32) {
+	addGlyph := func(s sprite, x, py int, color uint32) {
 		if ng >= len(glyphs) {
 			return
 		}
-		g := &glyphs[ng]
+		glyphs[ng] = glyphAt(s, r.Style.PadX+x, py, color)
 		ng++
-		g.X = int16(r.Style.PadX + x + int(s.OffX))
-		g.Y = int16(py + int(s.OffY))
-		g.W, g.H, g.U, g.V = s.W, s.H, s.X, s.Y
-		g.Color = color
-		if s.Color {
-			g.Flags = flagColorGlyph
-		} else {
-			g.Flags = 0
-		}
 	}
 	addRect := func(px, w int, color uint32) {
 		if nr > 0 {
@@ -604,21 +595,7 @@ func (r *Renderer) buildRow(y int) {
 			wcells = 2
 		}
 		bold := c.Attr&term.AttrBold != 0
-		fg := r.resolve(c.Fg, true, bold)
-		bg := r.resolve(c.Bg, false, false)
-		if c.Attr&term.AttrInverse != 0 {
-			fg, bg = bg, fg
-		}
-		if c.Attr&term.AttrDim != 0 {
-			fg = mix(fg, bg, 0.45)
-		}
-		// The current search match looks like the selection.
-		if r.inSelection(abs, x) || r.inCurrentMatch(abs, x) {
-			bg = r.Style.SelBg
-			if r.Style.SelFgSet {
-				fg = r.Style.SelFg
-			}
-		}
+		fg, bg := r.cellColors(c, abs, x)
 		// The cursor may sit on the right half of a wide character
 		// (printf '中\b'), which the loop skips: draw it on the whole.
 		isCursor := cursorHere && (x == r.curX || wcells == 2 && x+1 == r.curX)
@@ -656,15 +633,7 @@ func (r *Renderer) buildRow(y int) {
 					addGlyph(s, x*cw, py, rgba(fg, 255))
 					// draw backgrounds for the following cells, then skip them
 					for k := 1; k < n; k++ {
-						cc := line[x+k]
-						b2 := r.resolve(cc.Bg, false, false)
-						if cc.Attr&term.AttrInverse != 0 {
-							b2 = r.resolve(cc.Fg, true, bold)
-						}
-						if r.inSelection(abs, x+k) || r.inCurrentMatch(abs, x+k) {
-							b2 = r.Style.SelBg
-						}
-						if b2 != defBg {
+						if _, b2 := r.cellColors(line[x+k], abs, x+k); b2 != defBg {
 							addRect(r.Style.PadX+(x+k)*cw, cw, rgba(b2, 255))
 						}
 					}
@@ -678,7 +647,7 @@ func (r *Renderer) buildRow(y int) {
 				k = glyphKey{ch: c.Ch, kind: kindCluster, style: style, cells: uint8(wcells)}
 			} else {
 				k = glyphKey{ch: c.Ch, kind: kindRune, style: style, cells: uint8(wcells)}
-				if IsProcedural(c.Ch) {
+				if isProcedural(c.Ch) {
 					k.style = 0
 				}
 			}
@@ -763,7 +732,7 @@ func (r *Renderer) plainRun(line []term.Cell, extras []term.Extra, abs int64, x,
 	return true
 }
 
-func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8) (int, Sprite) {
+func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8) (int, sprite) {
 	for _, cand := range ligatureCandidates {
 		n := len(cand)
 		if x+n > len(line) {
@@ -791,7 +760,7 @@ func (r *Renderer) ligatureAt(line []term.Cell, x int, style uint8) (int, Sprite
 			return n, s
 		}
 	}
-	return 0, Sprite{}
+	return 0, sprite{}
 }
 
 // buildOverlay fills the overlay slots: the IME preedit.
@@ -830,19 +799,50 @@ func (r *Renderer) buildOverlay() {
 				k = glyphKey{ch: r.Cache.textID(g), kind: kindText, cells: uint8(gw)}
 			}
 			if s, ok := r.Cache.get(k, func() string { return g }); ok && ng < len(gov) {
-				gov[ng] = glyphInst{X: int16(r.Style.PadX + x*cw + int(s.OffX)), Y: int16(py + int(s.OffY)), W: s.W, H: s.H, U: s.X, V: s.Y, Color: rgba(fg, 255)}
-				if s.Color {
-					gov[ng].Flags = flagColorGlyph
-				}
+				gov[ng] = glyphAt(s, r.Style.PadX+x*cw, py, rgba(fg, 255))
 				ng++
 			}
 			if s, ok := r.Cache.get(glyphKey{ch: decUnderline, kind: kindDecoration, cells: uint8(gw)}, nil); ok && ng < len(gov) {
-				gov[ng] = glyphInst{X: int16(r.Style.PadX + x*cw + int(s.OffX)), Y: int16(py + int(s.OffY)), W: s.W, H: s.H, U: s.X, V: s.Y, Color: rgba(r.cursorColor, 255)}
+				gov[ng] = glyphAt(s, r.Style.PadX+x*cw, py, rgba(r.cursorColor, 255))
 				ng++
 			}
 			x += gw
 		}
 	}
+}
+
+// glyphAt returns the instance that draws sprite s with its cell's top
+// left corner at x, y (pixels) in color.
+func glyphAt(s sprite, x, y int, color uint32) glyphInst {
+	g := glyphInst{
+		X: int16(x + int(s.OffX)), Y: int16(y + int(s.OffY)),
+		W: s.W, H: s.H, U: s.X, V: s.Y, Color: color,
+	}
+	if s.Color {
+		g.Flags = flagColorGlyph
+	}
+	return g
+}
+
+// cellColors returns the colours cell c, at column x of absolute line abs,
+// is drawn in before the cursor: resolved, inverted, dimmed, and the
+// selection's (or the current search match's, which looks the same).
+func (r *Renderer) cellColors(c term.Cell, abs int64, x int) (fg, bg uint32) {
+	fg = r.resolve(c.Fg, true, c.Attr&term.AttrBold != 0)
+	bg = r.resolve(c.Bg, false, false)
+	if c.Attr&term.AttrInverse != 0 {
+		fg, bg = bg, fg
+	}
+	if c.Attr&term.AttrDim != 0 {
+		fg = mix(fg, bg, 0.45)
+	}
+	if r.inSelection(abs, x) || r.inCurrentMatch(abs, x) {
+		bg = r.Style.SelBg
+		if r.Style.SelFgSet {
+			fg = r.Style.SelFg
+		}
+	}
+	return fg, bg
 }
 
 func graphemes(s string) []string {

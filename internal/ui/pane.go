@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -25,7 +24,7 @@ import (
 
 var glInitialized bool
 
-// Debug timing hooks (TERMITE_DEBUG=startup,latency).
+// Debug timing hooks (TERMITE_DEBUG=startup,latency,frames).
 var (
 	ProcessStart   = time.Now()
 	debugStartup   = strings.Contains(os.Getenv("TERMITE_DEBUG"), "startup")
@@ -80,7 +79,7 @@ const (
 type Pane struct {
 	app    *App
 	tab    *Tab
-	Widget *qtwidgets.QWidget // container: search bar + GL view
+	Widget *qtwidgets.QWidget // container: header, search bar, GL view and scrollbar
 	GL     *qtgl.Widget
 	T      *term.Terminal
 	S      *pty.Session
@@ -810,22 +809,28 @@ func (p *Pane) mouseMove(e *qtgui.QMouseEvent) {
 	p.extendSelection(at, e.Modifiers()&qtcore.AltModifier != 0)
 }
 
+// blockSelection returns the start and end (one column past) of the block
+// with corners anchor and at, whichever way it was dragged: the top line
+// and the left column, and the bottom line and one past the right column.
+func blockSelection(anchor, at term.Pos) (start, end term.Pos) {
+	start = term.Pos{Line: min(anchor.Line, at.Line), Col: min(anchor.Col, at.Col)}
+	end = term.Pos{Line: max(anchor.Line, at.Line), Col: max(anchor.Col, at.Col) + 1}
+	return start, end
+}
+
 func (p *Pane) extendSelection(at term.Pos, block bool) {
 	start, end := p.selAnchor, p.selAnchorE
 	p.T.Mu.Lock()
 	b := p.T.Buf()
 	switch p.selMode {
 	case selChar:
-		if at.Less(p.selAnchor) {
+		switch {
+		case block:
+			start, end = blockSelection(p.selAnchor, at)
+		case at.Less(p.selAnchor):
 			start, end = at, p.selAnchorE
-			if block {
-				start, end = at, term.Pos{Line: p.selAnchor.Line, Col: p.selAnchor.Col + 1}
-			}
-		} else {
+		default:
 			start, end = p.selAnchor, term.Pos{Line: at.Line, Col: at.Col + 1}
-		}
-		if block && at.Col < p.selAnchor.Col {
-			start.Col, end.Col = at.Col, p.selAnchor.Col+1
 		}
 	case selWord:
 		ws, we := b.WordAt(at, p.app.cfg.WordChars)
@@ -1217,7 +1222,7 @@ func (p *Pane) refocus() {
 		// It closed while a menu or dialog was open. Its neighbour, which
 		// closePane gave the focus, could not take it then, and Qt hands it
 		// back to the closed pane: give it again, if the window is left.
-		if w := p.tab.win; slices.Contains(p.app.windows, w) {
+		if w := p.tab.win; w.open() {
 			if q := w.currentPane(); q != nil && !q.exited {
 				q.refocus()
 			}
