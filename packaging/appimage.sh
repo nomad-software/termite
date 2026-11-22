@@ -33,7 +33,10 @@ OUTPUT="Termite-$VERSION-$ARCH.AppImage"
 mkdir -p "$TOOLS" "$CACHE"
 
 echo "Building Termite $VERSION"
-go build -ldflags "-s -w" -o "$BUILD/termite" .
+# Termite reports the tag the commit is, or follows (VERSION may be a
+# commit's hash when the workflow is run by hand).
+TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+go build -ldflags "-s -w -X termite/internal/term.version=$TAG" -o "$BUILD/termite" .
 # The icon is the program's own, which it is built with. The tool names it by
 # its file, which has to be the name the desktop file gives it.
 cp internal/appicon/appicon.png "$BUILD/termite.png"

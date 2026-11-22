@@ -409,3 +409,21 @@ func TestURLAtBacktick(t *testing.T) {
 		}
 	}
 }
+
+// TestVersion checks the version a build reports, by XTVERSION too: the
+// tag it was given without its v, or dev when it was given none.
+func TestVersion(t *testing.T) {
+	defer func(was string) { version = was }(version)
+	version = ""
+	if got := Version(); got != "dev" {
+		t.Errorf("a build given no version is %q, want dev", got)
+	}
+	version = "v2.0.6"
+	if got := Version(); got != "2.0.6" {
+		t.Errorf("a build given v2.0.6 is %q, want 2.0.6", got)
+	}
+	tm := feed(New(10, 3, 0), "\x1b[>q")
+	if got := string(tm.TakeReplies()); got != "\x1bP>|termite 2.0.6\x1b\\" {
+		t.Errorf("XTVERSION replied %q", got)
+	}
+}

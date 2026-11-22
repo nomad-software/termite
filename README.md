@@ -78,11 +78,12 @@ The easiest way to get Termite is the AppImage from a release (see
 compiler. Termite runs on Linux only.
 
 ```sh
-make build                   # or: go build
+make build                   # or: go build (which reports version dev)
 ./termite                    # your $SHELL
 ./termite -- htop            # run a command
 ./termite --layout work      # open a saved layout
 ./termite --write-config     # write the default config.json
+./termite --version          # print the version
 make appimage                # Termite-<version>-x86_64.AppImage
 ```
 
@@ -253,6 +254,9 @@ own build of Qt 6.12 (qute needs 6.12 or newer):
 
 - Pushing a tag starting with `v` builds it and attaches it to a release of
   that name: `git tag v1.0.0 && git push origin v1.0.0`.
+  The version termite reports (`--version`, XTVERSION,
+  `$TERM_PROGRAM_VERSION`) is the tag the build's commit is or follows,
+  without its `v`.
 - It can also be run by hand from the Actions tab of the repository
   (AppImage > Run workflow), which leaves the AppImage as an artifact of the
   run to download.

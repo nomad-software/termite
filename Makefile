@@ -4,6 +4,12 @@ BINARY := termite
 # halves the size of the binary.
 LDFLAGS := -s -w
 
+# The version termite reports: the tag the commit is, or follows. Go records
+# none that would do, as it ignores tags from v2 on for a module path
+# without /v2.
+VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null)
+LDFLAGS += -X termite/internal/term.version=$(VERSION)
+
 .PHONY: build run test fuzz bench guibench vet icons screenshot appimage clean
 
 build:

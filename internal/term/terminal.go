@@ -7,9 +7,21 @@ import (
 	"time"
 )
 
-// Version is termite's version, reported by XTVERSION and in
-// $TERM_PROGRAM_VERSION.
-const Version = "1.0"
+// version is the release termite is built from: the tag its commit is, or
+// follows, set from git by the Makefile and the AppImage's script (-ldflags
+// -X). Go records no version of its own that would do: under a module path
+// without /v2 it ignores every tag from v2 on.
+var version string
+
+// Version returns termite's version, reported by XTVERSION, in
+// $TERM_PROGRAM_VERSION and by --version: the tag without its leading v
+// (2.0.6 for v2.0.6), or dev for a build that was not given one.
+func Version() string {
+	if version == "" {
+		return "dev"
+	}
+	return strings.TrimPrefix(version, "v")
+}
 
 // Event flags raised by the terminal for the UI layer. Changes the
 // renderer sees for itself (screen contents, colours, the alternate screen)
@@ -898,7 +910,7 @@ func (t *Terminal) csiDispatch(final byte) {
 				t.reply("\x1b[>1;10;0c")
 			}
 		case 'q': // XTVERSION
-			t.reply("\x1bP>|termite " + Version + "\x1b\\")
+			t.reply("\x1bP>|termite " + Version() + "\x1b\\")
 		case 'u': // kitty: push flags
 			st := t.kittyStack()
 			*st = append(*st, ps.Raw(0, 0)&0x1f)

@@ -48,6 +48,13 @@ and architecture.
   the Qt OpenGL and SVG modules, or containing libGL/libEGL
   (the system's must be used), and starts the result under `xvfb-run` with
   Mesa's software GL (offscreen can't give termite a GL context).
+- Version (`term.Version`, reported by `--version`, XTVERSION and
+  `$TERM_PROGRAM_VERSION`): the tag the build's commit is or follows,
+  without its `v`, set by `-ldflags -X termite/internal/term.version=` from
+  `git describe --tags --abbrev=0` in the Makefile and
+  `packaging/appimage.sh` (the workflow checks out with `fetch-depth: 0`
+  so the tags are there), or `dev` where there is none. Not what Go
+  records, which ignores tags from v2 on as the module path has no `/v2`.
 - `test/termite-headless -size 80x24 -script '...' -- prog` prints the screen of a
   program run through the emulator core (vim, vttest, …) without a GUI.
 

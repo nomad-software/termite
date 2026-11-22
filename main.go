@@ -19,6 +19,7 @@ import (
 	"termite/internal/appicon"
 	"termite/internal/config"
 	"termite/internal/desktop"
+	"termite/internal/term"
 	"termite/internal/ui"
 )
 
@@ -29,12 +30,17 @@ func main() {
 	memProfile := flag.String("memprofile", "", "write a heap profile on exit")
 	pprofAddr := flag.String("pprof", "", "serve net/http/pprof on this address (e.g. localhost:6060)")
 	writeConfig := flag.Bool("write-config", false, "write the default config (JSON) and exit")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: termite [flags] [-- command args...]\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
 
+	if *showVersion {
+		fmt.Println("termite", term.Version())
+		return
+	}
 	if *writeConfig {
 		if err := config.WriteSample(*cfgPath); errors.Is(err, fs.ErrExist) {
 			fatal(fmt.Errorf("%s already exists", *cfgPath))
