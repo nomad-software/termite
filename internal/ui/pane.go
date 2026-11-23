@@ -24,12 +24,13 @@ import (
 
 var glInitialized bool
 
-// Debug timing hooks (TERMITE_DEBUG=startup,latency,frames).
+// Debug hooks (TERMITE_DEBUG=startup,latency,frames,wheel).
 var (
 	ProcessStart   = time.Now()
 	debugStartup   = strings.Contains(os.Getenv("TERMITE_DEBUG"), "startup")
 	debugLatency   = strings.Contains(os.Getenv("TERMITE_DEBUG"), "latency")
 	debugFrames    = strings.Contains(os.Getenv("TERMITE_DEBUG"), "frames")
+	debugWheel     = strings.Contains(os.Getenv("TERMITE_DEBUG"), "wheel")
 	firstFrameDone bool
 )
 
@@ -902,18 +903,23 @@ func (p *Pane) wheel(e *qtgui.QWheelEvent) {
 	pos := e.Position()
 	col, row, _ := p.cellAt(pos.X, pos.Y)
 	_, ch := p.R.CellSize()
-	var lines float64
-	if e.HasPixelDelta() && e.PixelDelta().Y != 0 {
-		p.wheelAccum += float64(e.PixelDelta().Y) * p.dpr / float64(ch)
-	} else {
-		p.wheelAccum += float64(e.AngleDelta().Y) / 120 * 3
+	perNotch := p.app.cfg.ScrollLines
+	// A pixel delta is taken from a touchpad only. On Wayland Qt gives one
+	// for a mouse wheel as well (about a line's worth a notch), which it
+	// marks as not synthesized; following it would ignore scroll_lines.
+	pixelY := 0
+	if e.HasPixelDelta() && e.Source() != qtcore.MouseEventNotSynthesized {
+		pixelY = e.PixelDelta().Y
 	}
-	lines = math.Trunc(p.wheelAccum)
-	p.wheelAccum -= lines
+	lines := wheelLines(&p.wheelAccum, pixelY, e.AngleDelta().Y, p.dpr, ch, perNotch)
+	if debugWheel {
+		fmt.Fprintf(os.Stderr, "wheel: pixel=%d (used %d) angle=%d source=%d phase=%d lines=%d\n",
+			e.PixelDelta().Y, pixelY, e.AngleDelta().Y, e.Source(), e.Phase(), lines)
+	}
 	if lines == 0 {
 		return
 	}
-	n := int(math.Abs(lines))
+	n := max(lines, -lines)
 	up := lines > 0
 	mods := e.Modifiers()
 	p.T.Mu.Lock()
@@ -928,7 +934,13 @@ func (p *Pane) wheel(e *qtgui.QWheelEvent) {
 		if up {
 			btn = input.MouseWheelUp
 		}
-		for i := 0; i < max(1, n/3); i++ {
+		// One report per notch, or per three lines of a touchpad's
+		// travel: the program decides how far that scrolls.
+		per := perNotch
+		if pixelY != 0 {
+			per = 3
+		}
+		for i := 0; i < max(1, n/per); i++ {
 			p.mouseReport(btn, input.MousePress, col, row, mods)
 		}
 	case alt && altScroll:
@@ -948,6 +960,22 @@ func (p *Pane) wheel(e *qtgui.QWheelEvent) {
 			p.scrollBy(n)
 		}
 	}
+}
+
+// wheelLines returns the whole lines a wheel event scrolls, positive for
+// up, keeping the fraction left over in accum for the next event. A pixel
+// delta (a touchpad) moves the text with the fingers, whatever perNotch
+// is; otherwise a notch of the wheel (120 units of angle) is perNotch
+// lines.
+func wheelLines(accum *float64, pixelY, angleY int, dpr float64, cellHeight, perNotch int) int {
+	if pixelY != 0 && cellHeight > 0 {
+		*accum += float64(pixelY) * dpr / float64(cellHeight)
+	} else {
+		*accum += float64(angleY) / 120 * float64(perNotch)
+	}
+	lines := math.Trunc(*accum)
+	*accum -= lines
+	return int(lines)
 }
 
 func (p *Pane) updatePointer(link bool) {

@@ -209,6 +209,13 @@ and architecture.
   program that is reading (`TestBigWriteArrives`).
 - Mouse reports follow the program's choice: SGR with ?1006, else X10
   (`EncodeMouse(…, sgr)`, through `Pane.mouseReport`).
+- The wheel (`Pane.wheel`, `wheelLines`): a notch scrolls `scroll_lines`
+  lines (arrow keys under alt-scroll too); a pixel delta from a touchpad
+  moves the text by its own distance whatever the setting (on Wayland Qt
+  gives a wheel one too, told apart by `Source()` being
+  `MouseEventNotSynthesized`: follow that and a notch is one line), and a program
+  reporting the mouse gets one report per notch, never `scroll_lines` of
+  them. `TERMITE_DEBUG=wheel` prints each event's deltas.
 - Ligatures are drawn only over cells with no cursor (in either blink
   phase, or they flicker with it), no IME preedit, no decorations and one
   selection state (`plainRun`): the ligature path skips the per-cell

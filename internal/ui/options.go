@@ -171,6 +171,12 @@ func (a *App) showOptions(p *Pane) {
 	scrollback.SetValue(cfg.Scrollback)
 	scrollback.SetToolTip("Applies to panes opened from now on.")
 	bf.AddRowText("Scrollback:", scrollback)
+	scrollLines := qtwidgets.NewQSpinBox(beh)
+	scrollLines.SetRange(config.MinScrollLines, config.MaxScrollLines)
+	scrollLines.SetSuffix(" lines")
+	scrollLines.SetValue(cfg.ScrollLines)
+	scrollLines.SetToolTip("How far one notch of the mouse wheel scrolls.")
+	bf.AddRowText("Mouse wheel scrolls:", scrollLines)
 	copySel := qtwidgets.NewQCheckBoxWithText("Copy selected text to the clipboard", nil)
 	copySel.SetChecked(cfg.CopyOnSelect)
 	bf.AddRowText("", copySel)
@@ -233,6 +239,7 @@ func (a *App) showOptions(p *Pane) {
 			"cursor_style":       cursor.value(),
 			"cursor_blink":       blink.IsChecked(),
 			"scrollback":         scrollback.Value(),
+			"scroll_lines":       scrollLines.Value(),
 			"copy_on_select":     copySel.IsChecked(),
 			"paste_warning":      paste.value(),
 			"osc52":              osc52.value(),

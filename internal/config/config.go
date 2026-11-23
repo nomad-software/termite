@@ -31,6 +31,7 @@ type Config struct {
 	Theme            string            `json:"theme"`
 	WindowTheme      string            `json:"window_theme"` // system, light, dark
 	Scrollback       int               `json:"scrollback"`
+	ScrollLines      int               `json:"scroll_lines"` // per notch of the mouse wheel
 	CursorStyle      string            `json:"cursor_style"` // block, beam, underline
 	CursorBlink      bool              `json:"cursor_blink"`
 	CopyOnSelect     bool              `json:"copy_on_select"`
@@ -112,6 +113,7 @@ func Default() *Config {
 		WindowTheme:      "system",
 		Themes:           CloneThemes(BuiltinThemes),
 		Scrollback:       10000,
+		ScrollLines:      3,
 		CursorStyle:      "block",
 		CopyOnSelect:     true,
 		Scrollbar:        true,
@@ -324,6 +326,8 @@ const (
 	MinLineHeight, MaxLineHeight = 0.8, 2.5
 	MaxPadding                   = 50
 	MaxScrollback                = 1000000
+	MinScrollLines               = 1
+	MaxScrollLines               = 50
 )
 
 func (c *Config) normalize() {
@@ -341,6 +345,7 @@ func (c *Config) normalize() {
 		c.HeaderFontSize = 0
 	}
 	c.Scrollback = min(max(c.Scrollback, 0), MaxScrollback)
+	c.ScrollLines = min(max(c.ScrollLines, MinScrollLines), MaxScrollLines)
 	c.Padding = min(max(c.Padding, 0), MaxPadding)
 	if c.WindowTheme == "" {
 		c.WindowTheme = "system"

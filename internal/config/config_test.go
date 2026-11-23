@@ -334,14 +334,14 @@ func TestValidateEnums(t *testing.T) {
 // are brought within its ranges.
 func TestLoadClamps(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
-	os.WriteFile(p, []byte(`{"font_size": 5000, "line_height": 0.01, "padding": 100000, "header_font_size": 1, "scrollback": -5}`), 0o644)
+	os.WriteFile(p, []byte(`{"font_size": 5000, "line_height": 0.01, "padding": 100000, "header_font_size": 1, "scrollback": -5, "scroll_lines": 0}`), 0o644)
 	c, err := Load(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.FontSize != MaxFontSize || c.LineHeight != MinLineHeight || c.Padding != MaxPadding ||
-		c.HeaderFontSize != MinFontSize || c.Scrollback != 0 {
-		t.Errorf("%v %v %v %v %v", c.FontSize, c.LineHeight, c.Padding, c.HeaderFontSize, c.Scrollback)
+		c.HeaderFontSize != MinFontSize || c.Scrollback != 0 || c.ScrollLines != MinScrollLines {
+		t.Errorf("%v %v %v %v %v %v", c.FontSize, c.LineHeight, c.Padding, c.HeaderFontSize, c.Scrollback, c.ScrollLines)
 	}
 }
 

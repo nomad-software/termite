@@ -107,6 +107,8 @@ prints time-to-first-frame and keypress-to-frame latencies.
 `TERMITE_DEBUG=frames` prints, once a second while painting, how many
 frames were drawn, their average and worst time (including the GPU's
 work, through `glFinish`) and the instances each drew.
+`TERMITE_DEBUG=wheel` prints each wheel event's deltas and the lines it
+scrolled.
 
 ## Configuration
 
@@ -126,7 +128,7 @@ null too, keeps its default; `"none"` unbinds it). Sizes outside the
 Options dialog's ranges are brought within them.
 
 Most options can also be set in the **Options** dialog (right-click →
-Options…). Its General tab covers scrollback, copy on select, paste
+Options…). Its General tab covers scrollback, the mouse wheel's speed, copy on select, paste
 warning and OSC 52 clipboard access. Its User interface tab covers the
 window theme, the toolbar, font and size (any installed font, with a warning if it
 isn't monospaced), the pane headers' font and size, line height, padding, ligatures, bold-as-bright, the
@@ -153,6 +155,7 @@ saved when a window closes and used for new windows.
 | `toolbar` | `true` | show the toolbar (New Window, New Tab, Split Horizontally, Split Vertically, Zoom, Broadcast, Options, Exit) above the tabs; Exit (Ctrl+W) types `exit` into the current pane only |
 | `themes` | the built-in themes | `{"id": {"name": "…", "foreground": "#…", "background": "#…", "cursor": "#…", "cursor_text": …, "selection": …, "selection_text": …, "palette": [16 colours]}}`; when present it replaces the built-in list, so themes can be removed. `cursor_text`, `selection`, `selection_text` and the pane header colours `header_background`, `header_focused_background`, `header_text` and `header_focused_text` are optional |
 | `scrollback` | `10000` | lines, up to 1,000,000 |
+| `scroll_lines` | `3` | lines one notch of the mouse wheel scrolls, 1 to 50; touchpads follow the fingers |
 | `cursor_style` | `"block"` | `block`, `beam`, `underline`; programs may choose another shape (DECSCUSR) until they reset it |
 | `cursor_blink` | `false` | allows blinking when an app requests it |
 | `copy_on_select` | `true` | primary selection is always set |
